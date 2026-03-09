@@ -151,13 +151,17 @@ Acceptance Criteria:
 
 ### 6.5 Risk Management
 
-**FR-010: Account Configuration**
-Description: User configures their trading accounts with name, type (taxable/IRA), balance, and default risk percentage.
+**FR-010: Account Configuration with Plaid Integration**
+Description: User connects their brokerage accounts via Plaid Link. The system pulls account balances and holdings automatically. User sets account type (taxable/IRA) and default risk percentage.
 Priority: Must Have
 Acceptance Criteria:
-- GIVEN the settings page WHEN the user adds an account "Taxable" with type "taxable", balance $92,000, and default risk 1% THEN the account is available for position sizing calculations
-- GIVEN the settings page WHEN the user adds an account "IRA" with type "IRA", balance $250,000, and default risk 1% THEN the account is available and IRA restrictions are enforced on recommendations
-- GIVEN an account balance WHEN the user updates it THEN all future position sizing uses the new balance
+- GIVEN the settings page WHEN the user clicks "Connect Account" THEN Plaid Link opens and the user can authenticate with Fidelity
+- GIVEN a successful Plaid connection WHEN the account is linked THEN the system pulls and displays the account name, type, and current balance automatically
+- GIVEN a linked account WHEN the user sets type "IRA" and default risk 1% THEN IRA restrictions are enforced on recommendations and risk % is used for position sizing
+- GIVEN a linked account WHEN the user opens the app THEN account balances are refreshed from Plaid (cached, refreshed at most every 4 hours)
+- GIVEN a linked account WHEN the user views account details THEN current holdings/positions are displayed with ticker, quantity, and current value
+- GIVEN Plaid is unavailable or the connection expires WHEN the user opens the app THEN the last known balance is used and a warning is displayed: "Balance may be stale — last updated [timestamp]"
+- GIVEN the user prefers not to connect Plaid WHEN they access account settings THEN they can manually enter account name, type, balance, and risk % as a fallback
 
 **FR-011: Portfolio Risk Tracking**
 Description: The system tracks total open risk across all active trades and warns when limits are approached.
@@ -222,7 +226,7 @@ How to Verify: Attempt to access from another machine on the network; connection
 ## 8. Data Model (High-Level)
 
 ### Entities
-- **Account** — id, name, type (taxable/IRA), balance, default_risk_pct
+- **Account** — id, name, type (taxable/IRA), balance, default_risk_pct, plaid_account_id, plaid_access_token, balance_updated_at
 - **Asset** — id, ticker, name, asset_class (equity/crypto/commodity), exchange, active
 - **Level** — id, asset_id, price, label, type (fibonacci/manual/pivot), active, created_at
 - **ChecklistFactor** — id, name, description, weight, score_type (pass_fail/scale/numeric), config_json
@@ -256,7 +260,10 @@ RESTful JSON API. Key endpoints:
 | POST | /api/evaluations/:id/outcome | Log trade outcome |
 | GET/POST | /api/analyst-calls | List/create analyst calls |
 | GET/POST | /api/accounts | List/create accounts |
-| PUT | /api/accounts/:id | Update account (balance, risk %) |
+| PUT | /api/accounts/:id | Update account (risk %, type) |
+| POST | /api/accounts/plaid/link-token | Create Plaid Link token |
+| POST | /api/accounts/plaid/exchange | Exchange Plaid public token for access token + store accounts |
+| POST | /api/accounts/:id/refresh | Refresh balance/holdings from Plaid |
 | GET | /api/analytics | Performance analytics |
 | GET | /api/portfolio-risk | Current open risk summary |
 | POST | /api/webhooks/tradingview | TradingView alert receiver |
@@ -270,6 +277,7 @@ RESTful JSON API. Key endpoints:
 - Manual trade evaluation with scoring (core loop)
 - Recommendation with position sizing
 - Confirmation dashboard (single-page go/no-go)
+- Plaid integration for account balances and holdings (manual fallback)
 - Account config (two accounts, IRA flagging)
 - Trade journal — log confirm/pass and outcomes
 
@@ -290,7 +298,8 @@ RESTful JSON API. Key endpoints:
 - Real-time streaming data
 
 ### Constraints
-- Fidelity has no public API — all trade execution is manual
+- Fidelity has no trading API — all trade execution is manual. Read-only data via Plaid.
+- Plaid requires a developer account and API keys (free Sandbox for dev, paid for Production)
 - On-chain data APIs (Glassnode, CryptoQuant) have rate-limited free tiers
 - YouTube/X content ingestion has TOS and rate-limit concerns
 - Personal tool — commercialization is not in scope
@@ -303,6 +312,7 @@ RESTful JSON API. Key endpoints:
 | Checklist weights are wrong initially | High | Low | System tracks factor predictiveness; suggest adjustments after 30+ trades |
 | Overfitting to historical patterns | Medium | High | Keep minimum 30-trade sample before suggesting weight changes; display confidence intervals |
 | TradingView webhook reliability | Low | Medium | Store events idempotently; manual fallback always available |
+| Plaid connection expires or Fidelity blocks | Medium | Low | Manual balance entry as fallback; Plaid tokens refresh automatically but can break |
 
 ## 12. Open Questions
 
