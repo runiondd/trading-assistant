@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Trading Helper is a decision-support system that synthesizes technical analysis, analyst sentiment, and market data into scored trade recommendations across stocks, crypto (BTC/SOL), and precious metals/commodities. The system codifies the trader's personal checklist into weighted, scored factors and presents a clear go/no-go recommendation that the trader confirms before executing manually. Designed for eventual commercialization as a multi-tenant SaaS product.
+Trading Helper is a personal decision-support system that synthesizes technical analysis, analyst sentiment, and market data into scored trade recommendations across stocks, crypto (BTC/SOL), and precious metals/commodities. The system codifies the trader's personal checklist into weighted, scored factors and presents a clear go/no-go recommendation that the trader confirms before executing manually.
 
 ## 2. Problem Statement
 
@@ -26,11 +26,6 @@ Active traders who follow multiple analysts and maintain their own technical ana
 - Trades long and short via shares/spot, options, and futures
 - Timeframes: weekly, daily, 4h, 1h
 - Wants to trade for a living — quality over quantity
-
-### Future: Other Active Traders
-- Bring their own checklists, analysts, and criteria
-- Configurable scoring weights and data sources
-- Subscription-based access
 
 ## 5. User Stories
 
@@ -57,8 +52,7 @@ Active traders who follow multiple analysts and maintain their own technical ana
 
 ### Won't Have (v1)
 - US-016: Auto-execution of trades
-- US-017: Multi-tenant SaaS with user accounts and billing
-- US-018: Real-time streaming data feeds
+- US-017: Real-time streaming data feeds
 - US-019: Broker API integration (Fidelity has none)
 
 ## 6. Functional Requirements
@@ -225,28 +219,21 @@ Description: MVP is single-user, local/self-hosted. No authentication required f
 Target: App binds to localhost only by default.
 How to Verify: Attempt to access from another machine on the network; connection refused.
 
-**NFR-004: Future Multi-Tenancy Readiness**
-Description: Data model and API design should not preclude adding user accounts and multi-tenancy later.
-Target: All data is scoped to a user_id field even in single-user mode.
-How to Verify: Inspect schema — every table has a user_id column.
-
 ## 8. Data Model (High-Level)
 
 ### Entities
-- **User** — id, name, email, created_at (single user for MVP, but schema-ready)
-- **Account** — id, user_id, name, type (taxable/IRA), balance, default_risk_pct
-- **Asset** — id, user_id, ticker, name, asset_class (equity/crypto/commodity), exchange, active
+- **Account** — id, name, type (taxable/IRA), balance, default_risk_pct
+- **Asset** — id, ticker, name, asset_class (equity/crypto/commodity), exchange, active
 - **Level** — id, asset_id, price, label, type (fibonacci/manual/pivot), active, created_at
-- **ChecklistFactor** — id, user_id, name, description, weight, score_type (pass_fail/scale/numeric), config_json
-- **TradeEvaluation** — id, user_id, asset_id, direction (long/short), timeframe, composite_score, signal (green/yellow/red), status (pending/confirmed/passed), created_at
+- **ChecklistFactor** — id, name, description, weight, score_type (pass_fail/scale/numeric), config_json
+- **TradeEvaluation** — id, asset_id, direction (long/short), timeframe, composite_score, signal (green/yellow/red), status (pending/confirmed/passed), created_at
 - **FactorScore** — id, evaluation_id, factor_id, raw_value, normalized_score, reasoning
 - **Recommendation** — id, evaluation_id, account_id, entry_price, stop_loss, targets_json, rr_ratio, position_size, vehicle, vehicle_reasoning, ira_eligible
-- **AnalystCall** — id, user_id, asset_id, analyst_name, direction, conviction, reasoning, call_date, stale
+- **AnalystCall** — id, asset_id, analyst_name, direction, conviction, reasoning, call_date, stale
 - **TradeOutcome** — id, evaluation_id, actual_entry, actual_exit, pnl, notes, closed_at
 - **WebhookEvent** — id, asset_id, source, indicator, value, timeframe, received_at
 
 ### Key Relationships
-- User → many Accounts, Assets, ChecklistFactors, TradeEvaluations, AnalystCalls
 - Asset → many Levels, AnalystCalls, TradeEvaluations, WebhookEvents
 - TradeEvaluation → many FactorScores, one Recommendation, one TradeOutcome
 - ChecklistFactor → many FactorScores
@@ -293,7 +280,6 @@ RESTful JSON API. Key endpoints:
 - On-chain data integration (v0.3)
 - Automated analyst content ingestion (v0.3)
 - Weight auto-adjustment based on performance (v0.3)
-- Multi-tenant SaaS / user accounts / billing (v1.0)
 - Mobile app (v0.2 — responsive web)
 - Broker integration (blocked — Fidelity has no API)
 - Real-time streaming data
@@ -302,7 +288,7 @@ RESTful JSON API. Key endpoints:
 - Fidelity has no public API — all trade execution is manual
 - On-chain data APIs (Glassnode, CryptoQuant) have rate-limited free tiers
 - YouTube/X content ingestion has TOS and rate-limit concerns
-- If commercialized, SEC/FINRA regulations around investment advice apply — the system must present as a "tool" not an "advisor"
+- Personal tool — commercialization is not in scope
 
 ## 11. Dependencies & Risks
 
@@ -311,7 +297,6 @@ RESTful JSON API. Key endpoints:
 | Data entry fatigue — manual input of analyst calls and TA becomes tedious | High | Medium | Design fast-input forms; prioritize TradingView webhook integration in v0.2 |
 | Checklist weights are wrong initially | High | Low | System tracks factor predictiveness; suggest adjustments after 30+ trades |
 | Overfitting to historical patterns | Medium | High | Keep minimum 30-trade sample before suggesting weight changes; display confidence intervals |
-| Regulatory risk if commercialized | Medium | High | Position as "decision support tool," not investment advice; consult securities attorney before launch |
 | TradingView webhook reliability | Low | Medium | Store events idempotently; manual fallback always available |
 
 ## 12. Open Questions
@@ -319,4 +304,3 @@ RESTful JSON API. Key endpoints:
 - [Non-blocking] Should the system support multiple watchlists or groupings of assets?
 - [Non-blocking] What specific options strategies should the vehicle suggestion engine recommend beyond basic calls/puts? (Spreads, iron condors, etc.)
 - [Non-blocking] Should drawdown circuit breakers be advisory (warning) or enforced (blocks recommendations)?
-- [Non-blocking] For commercialization: subscription tiers and pricing — defer to GTM phase
