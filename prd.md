@@ -14,7 +14,7 @@ Active traders who follow multiple analysts and maintain their own technical ana
 - Enforce checklist discipline: 100% of trades pass through the scoring system before execution
 - Track and improve: after 30 days of use, identify which checklist factors are most predictive
 - Achieve a positive expectancy (win rate × avg win > loss rate × avg loss) as measured by the trade journal
-- MVP usable within 1-2 weeks of build start
+- MVP usable within 2 days of build start
 
 ## 4. Target Users
 
@@ -33,12 +33,12 @@ Active traders who follow multiple analysts and maintain their own technical ana
 - US-001: As a trader, I want to input my key S/R levels and fib retracements for an asset so that the system knows my levels.
 - US-002: As a trader, I want the system to score a potential trade against my checklist so that I get an objective composite score before entering.
 - US-003: As a trader, I want to see a one-page recommendation with entry, stop, targets, and R:R so that I can confirm or reject in under 60 seconds.
-- US-004: As a trader, I want to log analyst calls (asset, direction, conviction, reasoning) so that their sentiment is factored into scoring.
-- US-005: As a trader, I want automatic position sizing based on my account size, risk %, and stop distance so that I never risk more than I intend.
-- US-006: As a trader, I want to log trade outcomes so that I can track system accuracy over time.
-- US-007: As a trader, I want the system to flag when a recommendation is not IRA-eligible so that I don't attempt invalid trades in my IRA.
+- US-004: As a trader, I want automatic position sizing based on my account size, risk %, and stop distance so that I never risk more than I intend.
+- US-005: As a trader, I want to log trade outcomes so that I can track system accuracy over time.
+- US-006: As a trader, I want the system to flag when a recommendation is not IRA-eligible so that I don't attempt invalid trades in my IRA.
 
-### Should Have
+### Should Have (v0.2)
+- US-007: As a trader, I want to log analyst calls (asset, direction, conviction, reasoning) so that their sentiment is factored into scoring.
 - US-008: As a trader, I want TradingView alerts to push indicator data into the system so that I don't have to manually enter RSI/trend/mean reversion signals.
 - US-009: As a trader, I want to see which checklist factors are most predictive of winning trades so that I can refine my process.
 - US-010: As a trader, I want portfolio-level risk tracking so that I know my total open risk and correlated exposure at all times.
@@ -98,8 +98,8 @@ Acceptance Criteria:
   - Mean Reversion Confirmation (VWAP deviation for intraday, MA distance for D/W) — weight: 5, type: pass/fail
   - Price Near Key S/R Level — weight: 15, type: scale (at level/within 1%/within 2%/not near)
   - Risk/Reward Ratio — weight: 15, type: numeric (minimum 2:1 for full points, 1.5:1 partial, below 1.5:1 zero)
-  - Analyst Consensus — weight: 5, type: scale (all agree/majority/split/contrarian)
-  - Timeframe Alignment — weight: 5, type: pass/fail (trade direction aligns with the trend on the traded timeframe)
+  - Timeframe Alignment — weight: 10, type: pass/fail (trade direction aligns with the trend on the traded timeframe)
+  - (Analyst Consensus factor added in v0.2 when analyst call logging ships)
 
 **FR-005: Trade Evaluation / Scoring**
 Description: User initiates a trade evaluation for an asset+direction+timeframe. The system scores each checklist factor and produces a composite score (0-100).
@@ -263,24 +263,29 @@ RESTful JSON API. Key endpoints:
 
 ## 10. Scope & Constraints
 
-### In Scope (MVP — v0.1)
-- Asset and S/R level management
+### In Scope (MVP — v0.1, 2-day build)
+- Asset management (add/edit tickers)
+- S/R level input (manual + fib calculator)
 - Pre-configured checklist with editable weights
-- Manual trade evaluation with scoring
-- Recommendation generation with position sizing
-- Confirmation dashboard
-- Analyst call logging (manual)
-- Trade journal with outcome logging
-- Basic performance analytics
-- Two account support (taxable + IRA) with IRA restriction flagging
+- Manual trade evaluation with scoring (core loop)
+- Recommendation with position sizing
+- Confirmation dashboard (single-page go/no-go)
+- Account config (two accounts, IRA flagging)
+- Trade journal — log confirm/pass and outcomes
 
-### Out of Scope (v0.1)
-- TradingView webhook integration (v0.2)
-- Portfolio-level risk tracking (v0.2)
-- On-chain data integration (v0.3)
-- Automated analyst content ingestion (v0.3)
-- Weight auto-adjustment based on performance (v0.3)
-- Mobile app (v0.2 — responsive web)
+### Deferred to v0.2 (after MVP is in use)
+- Analyst call logging and consensus scoring
+- Performance analytics and factor correlation
+- TradingView webhook integration
+- Portfolio-level risk tracking
+- Correlated exposure tracking
+- Vehicle suggestion engine (default to shares for MVP)
+
+### Out of Scope
+- On-chain data integration
+- Automated analyst content ingestion
+- Weight auto-adjustment based on performance
+- Mobile app (responsive web later)
 - Broker integration (blocked — Fidelity has no API)
 - Real-time streaming data
 
