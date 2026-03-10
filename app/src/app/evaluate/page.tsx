@@ -287,6 +287,22 @@ export default function EvaluatePage() {
   const isIraShort =
     selectedAccount && (selectedAccount.accountType === "ira" || selectedAccount.accountType === "roth") && direction === "short";
 
+  // Score a single scale factor, respecting direction-aware scoreMap if present
+  const scoreScaleFactor = useCallback((val: string, f: FactorRow): number => {
+    if (!f.configJson) return 0;
+    const config = JSON.parse(f.configJson);
+    const scoreMap = config.scoreMap;
+    if (scoreMap && scoreMap[direction] && val in scoreMap[direction]) {
+      return scoreMap[direction][val] * f.weight;
+    }
+    const options = config.options as string[];
+    const idx = options.indexOf(val);
+    if (idx >= 0 && options.length > 1) {
+      return (idx / (options.length - 1)) * f.weight;
+    }
+    return 0;
+  }, [direction]);
+
   // Inline scoring preview for step 2
   const previewScore = useMemo(() => {
     let totalEarned = 0;
@@ -298,11 +314,7 @@ export default function EvaluatePage() {
       if (f.scoreType === "pass_fail") {
         totalEarned += val === "true" ? f.weight : 0;
       } else if (f.scoreType === "scale") {
-        const options = f.configJson ? JSON.parse(f.configJson).options as string[] : [];
-        const idx = options.indexOf(val);
-        if (idx >= 0 && options.length > 1) {
-          totalEarned += (idx / (options.length - 1)) * f.weight;
-        }
+        totalEarned += scoreScaleFactor(val, f);
       } else if (f.scoreType === "numeric") {
         const num = parseFloat(val);
         if (num >= 2) totalEarned += f.weight;
@@ -310,7 +322,7 @@ export default function EvaluatePage() {
       }
     });
     return totalMax > 0 ? Math.round((totalEarned / totalMax) * 100) : 0;
-  }, [factors, factorValues]);
+  }, [factors, factorValues, scoreScaleFactor]);
 
   const scoreColor =
     previewScore >= 75 ? "text-signal-green" : previewScore >= 50 ? "text-signal-yellow" : "text-signal-red";
@@ -888,9 +900,7 @@ export default function EvaluatePage() {
                   if (f.scoreType === "pass_fail") {
                     earned = val === "true" ? f.weight : 0;
                   } else if (f.scoreType === "scale") {
-                    const options = f.configJson ? (JSON.parse(f.configJson).options as string[]) : [];
-                    const i = options.indexOf(val);
-                    if (i >= 0 && options.length > 1) earned = (i / (options.length - 1)) * f.weight;
+                    earned = scoreScaleFactor(val, f);
                   } else if (f.scoreType === "numeric") {
                     const num = parseFloat(val);
                     if (num >= 2) earned = f.weight;

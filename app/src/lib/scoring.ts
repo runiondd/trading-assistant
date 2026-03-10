@@ -25,6 +25,12 @@ export interface ScoringResult {
 
 interface ScaleConfig {
   options: string[];
+  // Direction-aware scoring: maps each option to a 0-1 fraction per direction.
+  // When present, overrides the default linear index-based scoring.
+  scoreMap?: {
+    long: Record<string, number>;
+    short: Record<string, number>;
+  };
 }
 
 function scorePassFail(value: string, weight: number): { normalizedScore: number; maxScore: number } {
@@ -35,7 +41,12 @@ function scorePassFail(value: string, weight: number): { normalizedScore: number
   };
 }
 
-function scoreScale(value: string, weight: number, configJson: string | null): { normalizedScore: number; maxScore: number } {
+function scoreScale(
+  value: string,
+  weight: number,
+  configJson: string | null,
+  direction: "long" | "short",
+): { normalizedScore: number; maxScore: number } {
   if (!configJson) {
     return { normalizedScore: 0, maxScore: weight };
   }
@@ -47,6 +58,16 @@ function scoreScale(value: string, weight: number, configJson: string | null): {
     return { normalizedScore: 0, maxScore: weight };
   }
 
+  // If a direction-aware scoreMap exists, use it
+  if (config.scoreMap) {
+    const dirMap = config.scoreMap[direction];
+    if (dirMap && value in dirMap) {
+      return { normalizedScore: dirMap[value] * weight, maxScore: weight };
+    }
+    // Fall through to default if value not in map
+  }
+
+  // Default: linear index-based scoring (first option = 0, last = full weight)
   const selectedIndex = options.indexOf(value);
   if (selectedIndex === -1) {
     return { normalizedScore: 0, maxScore: weight };
@@ -83,7 +104,7 @@ function deriveSignal(compositeScore: number): Signal {
 export function calculateScore(
   factors: ChecklistFactor[],
   values: Record<number, string>,
-  _direction: "long" | "short",
+  direction: "long" | "short",
   _rrRatio: number,
 ): ScoringResult {
   const factorResults: FactorResult[] = factors.map((factor) => {
@@ -99,7 +120,7 @@ export function calculateScore(
           scored = scorePassFail(rawValue, factor.weight);
           break;
         case "scale":
-          scored = scoreScale(rawValue, factor.weight, factor.configJson);
+          scored = scoreScale(rawValue, factor.weight, factor.configJson, direction);
           break;
         case "numeric":
           scored = scoreNumeric(rawValue, factor.weight);

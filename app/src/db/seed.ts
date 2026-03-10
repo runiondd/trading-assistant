@@ -65,7 +65,13 @@ function seed() {
         description: "RSI position relative to overbought/oversold thresholds for the timeframe.",
         weight: 10,
         scoreType: "scale",
-        configJson: JSON.stringify({ options: ["Overbought", "Neutral", "Oversold", "Confirming"] }),
+        configJson: JSON.stringify({
+          options: ["Overbought", "Neutral", "Oversold", "Confirming"],
+          scoreMap: {
+            long:  { "Overbought": 0, "Neutral": 0.33, "Oversold": 0.67, "Confirming": 1 },
+            short: { "Oversold": 0, "Neutral": 0.33, "Overbought": 0.67, "Confirming": 1 },
+          },
+        }),
         sortOrder: 2,
       },
       {

@@ -281,3 +281,71 @@ describe("numeric factor scoring", () => {
     expect(result.factorResults[0].normalizedScore).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Direction-aware scale scoring (scoreMap)
+// ---------------------------------------------------------------------------
+
+describe("direction-aware scale scoring with scoreMap", () => {
+  const rsiConfig = JSON.stringify({
+    options: ["Overbought", "Neutral", "Oversold", "Confirming"],
+    scoreMap: {
+      long:  { "Overbought": 0, "Neutral": 0.33, "Oversold": 0.67, "Confirming": 1 },
+      short: { "Oversold": 0, "Neutral": 0.33, "Overbought": 0.67, "Confirming": 1 },
+    },
+  });
+  const rsiFactor: ChecklistFactor = {
+    id: 1, name: "RSI", weight: 10, scoreType: "scale", configJson: rsiConfig,
+  };
+
+  it("scores Overbought as 0 for long (bad signal)", () => {
+    const result = calculateScore([rsiFactor], { 1: "Overbought" }, "long", 2);
+    expect(result.factorResults[0].normalizedScore).toBe(0);
+  });
+
+  it("scores Overbought as 6.7 for short (good signal)", () => {
+    const result = calculateScore([rsiFactor], { 1: "Overbought" }, "short", 2);
+    expect(result.factorResults[0].normalizedScore).toBeCloseTo(6.7, 0);
+  });
+
+  it("scores Oversold as 6.7 for long (good signal)", () => {
+    const result = calculateScore([rsiFactor], { 1: "Oversold" }, "long", 2);
+    expect(result.factorResults[0].normalizedScore).toBeCloseTo(6.7, 0);
+  });
+
+  it("scores Oversold as 0 for short (bad signal)", () => {
+    const result = calculateScore([rsiFactor], { 1: "Oversold" }, "short", 2);
+    expect(result.factorResults[0].normalizedScore).toBe(0);
+  });
+
+  it("scores Confirming as full weight for both directions", () => {
+    const longResult = calculateScore([rsiFactor], { 1: "Confirming" }, "long", 2);
+    expect(longResult.factorResults[0].normalizedScore).toBe(10);
+
+    const shortResult = calculateScore([rsiFactor], { 1: "Confirming" }, "short", 2);
+    expect(shortResult.factorResults[0].normalizedScore).toBe(10);
+  });
+
+  it("scores Neutral the same for both directions", () => {
+    const longResult = calculateScore([rsiFactor], { 1: "Neutral" }, "long", 2);
+    const shortResult = calculateScore([rsiFactor], { 1: "Neutral" }, "short", 2);
+    expect(longResult.factorResults[0].normalizedScore).toBeCloseTo(3.3, 0);
+    expect(shortResult.factorResults[0].normalizedScore).toBeCloseTo(3.3, 0);
+  });
+
+  it("falls back to linear index scoring when value not in scoreMap", () => {
+    const result = calculateScore([rsiFactor], { 1: "Unknown" }, "long", 2);
+    // Not in scoreMap, not in options → 0
+    expect(result.factorResults[0].normalizedScore).toBe(0);
+  });
+
+  it("falls back to linear index when no scoreMap present", () => {
+    const noMapFactor: ChecklistFactor = {
+      id: 2, name: "Trend", weight: 10, scoreType: "scale",
+      configJson: JSON.stringify({ options: ["Against", "Neutral", "Aligned", "Strong"] }),
+    };
+    // "Aligned" is index 2 of 4 options → 2/3 * 10 ≈ 6.67
+    const result = calculateScore([noMapFactor], { 2: "Aligned" }, "long", 2);
+    expect(result.factorResults[0].normalizedScore).toBeCloseTo(6.67, 1);
+  });
+});
