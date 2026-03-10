@@ -46,7 +46,7 @@ export default function TradingViewChart({
       gridColor: "rgba(30, 41, 59, 1)",
       withdateranges: true,
       hide_side_toolbar: false,
-      allow_symbol_change: false,
+      allow_symbol_change: true,
       save_image: false,
       calendar: false,
       studies: [
@@ -77,6 +77,7 @@ export default function TradingViewChart({
       style={{ height }}
     >
       <iframe
+        key={`${tvSymbol}-${tvInterval}`}
         src={src}
         style={{ width: "100%", height: "100%", border: "none" }}
         sandbox="allow-scripts allow-same-origin allow-popups"

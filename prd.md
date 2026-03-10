@@ -214,17 +214,18 @@ Acceptance Criteria:
 - GIVEN a webhook payload with fields {ticker, indicator, value, timeframe, timestamp} WHEN received THEN the data is parsed and available for the next trade evaluation
 - GIVEN a malformed webhook payload WHEN received THEN the system logs the error and returns HTTP 400 without crashing
 
-### 6.8 Live Indicator Data (TAAPI.io)
+### 6.8 Live Indicator Data (Local Computation)
 
-**FR-016: Live Technical Indicator Fetching**
-Description: The system fetches live RSI (14-period), Bollinger Bands (20/2), and VWAP data from TAAPI.io's REST API to auto-suggest checklist factor values during trade evaluation.
+**FR-016: Live Technical Indicator Computation**
+Description: The system computes technical indicators locally from free OHLCV price data (Binance US for crypto, Yahoo Finance for equities/commodities) and auto-populates all 8 automatable checklist factors during trade evaluation. The trader can override any auto-suggested value, and overrides are tracked in the journal.
 Priority: Must Have (MVP)
 Acceptance Criteria:
-- GIVEN the TAAPI_SECRET env var is configured WHEN the user reaches the checklist scoring step THEN the system fetches live RSI, BB, and VWAP for the selected asset/timeframe and displays them in an "Indicators" panel
-- GIVEN live indicator data is available WHEN the user views a checklist factor that can be auto-populated (RSI, Mean Reversion) THEN an "Apply" button appears with a suggested value and reasoning (e.g., "RSI is 72.3 (>70) — Overbought")
-- GIVEN the user clicks "Apply" on a suggestion THEN the corresponding checklist factor is pre-filled with the suggested value
-- GIVEN TAAPI_SECRET is not configured WHEN the evaluation page loads THEN the indicator panel is hidden and no API calls are made (graceful degradation)
-- GIVEN live data is fetched THEN results are cached for 5 minutes to conserve the free-tier quota (5,000 calls/day)
+- GIVEN the user reaches the checklist scoring step WHEN an asset and timeframe are selected THEN the system fetches OHLCV candles and computes RSI, EMA(20/50), Bollinger Bands, Keltner Channels, ATR, volume ratio, and squeeze detection — displayed in a "Live Indicators" panel
+- GIVEN computed indicators are available WHEN the checklist is displayed THEN all 8 automatable factors (Trend, RSI, Mean Reversion, S/R Proximity, R:R, Volume, Multi-TF, IRA) are auto-populated with suggested values and reasoning
+- GIVEN the system has auto-suggested a factor value WHEN the trader changes it THEN the override is recorded (system suggested vs. user chosen) and persisted with the evaluation
+- GIVEN overrides were recorded WHEN viewing the evaluation result or journal THEN the overrides are displayed showing what the system suggested vs. what the trader chose
+- GIVEN price data is fetched THEN results are cached in-memory for 5 minutes to reduce API calls
+- GIVEN no API keys are required THEN the indicator system always works without configuration (no graceful degradation needed)
 
 ## 7. Non-Functional Requirements
 
@@ -285,7 +286,7 @@ RESTful JSON API. Key endpoints:
 | POST | /api/accounts/plaid/exchange | Exchange Plaid public token for access token + store accounts |
 | POST | /api/accounts/:id/refresh | Refresh balance/holdings from Plaid |
 | GET | /api/analytics | Performance analytics |
-| GET | /api/indicators | Live RSI, BB, VWAP from TAAPI.io + auto-suggestions |
+| GET | /api/indicators | Locally-computed indicators for all timeframes + auto-suggestions for all 8 factors |
 | GET | /api/portfolio-risk | Current open risk summary |
 | POST | /api/webhooks/tradingview | TradingView alert receiver |
 
@@ -302,7 +303,7 @@ RESTful JSON API. Key endpoints:
 - Account config (two accounts, IRA flagging)
 - Trade journal — log confirm/pass and outcomes
 - TradingView embedded chart with RSI, BB, VWAP studies
-- Live indicator data from TAAPI.io with auto-suggestion of checklist factor values
+- Locally-computed technical indicators with auto-population of all 8 automatable checklist factors and override tracking
 
 ### Deferred to v0.2 (after MVP is in use)
 - Analyst call logging and consensus scoring

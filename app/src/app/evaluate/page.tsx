@@ -712,7 +712,7 @@ export default function EvaluatePage() {
             <Card>
               <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-1.5">
                 Live Indicators
-                <Tooltip text="Real-time indicator values from TAAPI.io. Used to auto-suggest checklist values below." />
+                <Tooltip text="Locally computed from live price data. Used to auto-suggest checklist values below." />
                 {indicatorsLoading && (
                   <span className="w-3 h-3 border border-text-muted border-t-primary rounded-full animate-spin" />
                 )}
