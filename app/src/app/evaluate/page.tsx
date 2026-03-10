@@ -243,14 +243,19 @@ export default function EvaluatePage() {
             if (factor) autoApplied[String(factor.id)] = (suggestion as { value: string }).value;
           }
           if (Object.keys(autoApplied).length > 0) {
-            setAutoSuggested((prev) => ({ ...prev, ...autoApplied }));
-            // Only auto-fill factors the user hasn't explicitly touched
-            setFactorValues((prev) => {
-              const merged = { ...prev };
-              for (const [k, v] of Object.entries(autoApplied)) {
-                if (!prev[k]) merged[k] = v;
-              }
-              return merged;
+            setAutoSuggested((prev) => {
+              // Update factorValues: auto-fill empty OR update values that still
+              // match the previous auto-suggestion (user never touched them)
+              setFactorValues((fv) => {
+                const merged = { ...fv };
+                for (const [k, v] of Object.entries(autoApplied)) {
+                  if (!fv[k] || fv[k] === prev[k]) {
+                    merged[k] = v;
+                  }
+                }
+                return merged;
+              });
+              return { ...prev, ...autoApplied };
             });
           }
         }
