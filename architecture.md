@@ -15,7 +15,8 @@ Trading Helper is a single-user, localhost-only trade decision-support system. I
 | ORM | Drizzle ORM | Lightweight, type-safe, excellent SQLite support |
 | API | Next.js API route handlers | Colocated with frontend, no separate server |
 | Brokerage Data | @plaid/plaid-node SDK | Read-only account balances and holdings |
-| Charts | TradingView widget (client-side) | Already embedded, no backend work needed |
+| Indicators | Local computation | RSI, EMA, SMA, Bollinger Bands, ATR, Keltner Channels from free OHLCV data (Binance US, Yahoo Finance) |
+| Charts | TradingView Advanced Chart (iframe embed) | RSI, BB, VWAP studies pre-configured |
 | Testing | Vitest | Fast, TypeScript-native |
 | Runtime | Node.js, localhost:3001 | Local-only for MVP |
 
@@ -36,7 +37,10 @@ app/
 │   ├── lib/
 │   │   ├── scoring.ts             # Scoring engine — pure function
 │   │   ├── position-sizing.ts     # Position size calculator — pure function
-│   │   └── plaid.ts               # Plaid client setup + helpers
+│   │   ├── plaid.ts               # Plaid client setup + helpers
+│   │   ├── indicators.ts          # Pure math: RSI, EMA, SMA, BB, ATR, KC, volume, squeeze
+│   │   ├── price-data.ts          # OHLCV candle fetching (Binance US + Yahoo Finance) with 5-min cache
+│   │   └── suggest-factors.ts     # Maps indicators to all 8 automatable checklist factor suggestions
 │   ├── types/
 │   │   └── index.ts               # Shared TypeScript types (API request/response shapes)
 │   ├── app/
@@ -86,6 +90,8 @@ app/
 │   │       │   │   └── route.ts   # POST (create Plaid Link token)
 │   │       │   └── exchange/
 │   │       │       └── route.ts   # POST (exchange public token)
+│   │       ├── indicators/
+│   │       │   └── route.ts       # GET (live RSI, BB, VWAP from TAAPI.io)
 │   │       └── journal/
 │   │           └── route.ts       # GET (list evaluations with outcomes)
 │   └── components/                # Existing UI components
@@ -95,10 +101,10 @@ app/
 │       ├── SignalBadge.tsx
 │       ├── Tooltip.tsx
 │       ├── TopBar.tsx
-│       └── TradingViewChart.tsx
+│       └── TradingViewChart.tsx   # iframe embed with config hash (RSI, BB, VWAP studies)
 ├── package.json
 ├── tsconfig.json
-└── .env.local                     # PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV
+└── .env.local                     # PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV (no indicator API keys needed)
 ```
 
 ## 4. Database Schema
@@ -177,6 +183,7 @@ SQLite database at `app/data/trading-helper.db`. Schema defined with Drizzle ORM
 | ira_eligible | INTEGER DEFAULT 1 | 0 if IRA-ineligible |
 | confirmed_at | TEXT | ISO timestamp |
 | passed_at | TEXT | ISO timestamp |
+| overrides_json | TEXT | JSON recording auto-suggested vs user-chosen values |
 | pass_reason | TEXT | optional reason for passing |
 | created_at | TEXT NOT NULL | ISO timestamp |
 
@@ -201,6 +208,17 @@ SQLite database at `app/data/trading-helper.db`. Schema defined with Drizzle ORM
 | notes | TEXT | post-trade notes |
 | closed_at | TEXT NOT NULL | ISO timestamp |
 | created_at | TEXT NOT NULL | ISO timestamp |
+
+**saved_factor_values**
+| Column | Type | Notes |
+|--------|------|-------|
+| id | INTEGER PK | auto-increment |
+| asset_id | INTEGER NOT NULL | FK -> assets.id |
+| factor_id | INTEGER NOT NULL | FK -> checklist_factors.id |
+| value | TEXT NOT NULL | persisted factor value |
+| updated_at | TEXT NOT NULL | ISO timestamp |
+
+Unique index on (asset_id, factor_id).
 
 ### 4.2 Indexes
 
@@ -281,6 +299,42 @@ Environment variables (`.env.local`):
 - `PLAID_SECRET`
 - `PLAID_ENV` — "sandbox" for dev, "production" for real accounts
 
+### 5.5 Local Indicator Computation
+
+Three modules replace the former TAAPI.io integration with zero-dependency local computation:
+
+**`app/src/lib/indicators.ts`** — Pure math library for technical indicators from OHLCV candle data:
+- `calcRSI(candles, period)` — Wilder's smoothing RSI
+- `calcEMA(closes, period)` — Exponential Moving Average
+- `calcSMA(values, period)` — Simple Moving Average
+- `calcBollingerBands(candles, period, stdDevMult)` — SMA ± standard deviation bands
+- `calcATR(candles, period)` — Average True Range with Wilder's smoothing
+- `calcKeltnerChannels(candles, emaPeriod, atrPeriod, atrMult)` — EMA ± ATR bands
+- `calcVolumeRatio(candles, period)` — Current volume vs. 20-period average
+- `isSqueeze(bb, kc)` — Bollinger Bands inside Keltner Channels detection
+
+All functions are stateless, zero-dependency, return null on insufficient data.
+
+**`app/src/lib/price-data.ts`** — Fetches OHLCV candles from free public APIs:
+- **Binance US** (primary) for crypto (BTC→BTCUSDT, SOL→SOLUSDT), with fallback to global Binance
+- **Yahoo Finance** for equities/commodities (AAPL, SPY, QQQ, GLD, SLV)
+- 4h candle aggregation from 1h Yahoo data (Yahoo lacks native 4h interval)
+- In-memory Map cache with 5-minute TTL
+- No API keys required
+
+**`app/src/lib/suggest-factors.ts`** — Maps computed indicators to checklist factor suggestions:
+- Covers all 8 automatable factors (Analyst Consensus remains manual)
+- Factors: trend (EMA20 vs EMA50), RSI (timeframe-aware thresholds), meanReversion (BB + KC squeeze), srProximity (entry vs S/R levels), riskReward (2:1 threshold), volume (1.2x avg), multiTf (cross-timeframe EMA agreement), ira (account type check)
+- Returns suggestions with human-readable reasons
+- Override tracking: system records when trader disagrees with automated suggestions
+
+### 5.6 TradingView Chart (`app/src/components/TradingViewChart.tsx`)
+
+Embeds TradingView's Advanced Chart widget as an iframe. Chart config (symbol, interval, studies, theme) is passed as a JSON object encoded in the URL hash fragment. Pre-configured studies: RSI, Bollinger Bands, VWAP — matching the trader's checklist factors.
+
+**Symbol mapping:** BTC → BINANCE:BTCUSDT, SOL → BINANCE:SOLUSDT, AAPL → NASDAQ:AAPL, SPY → AMEX:SPY, etc.
+**Interval mapping:** Weekly → W, Daily → D, 4h → 240, 1h → 60.
+
 ## 6. API Design
 
 All API routes live under `app/src/app/api/`. They use Next.js route handlers (`export async function GET/POST/PUT/DELETE`). All responses are JSON. Errors return `{ error: string }` with appropriate HTTP status codes.
@@ -339,7 +393,15 @@ All API routes live under `app/src/app/api/`. They use Next.js route handlers (`
 | POST | /api/plaid/link-token | Generate Plaid Link token | FR-010 |
 | POST | /api/plaid/exchange | Exchange public token, create account records | FR-010 |
 
-### 6.7 Journal
+### 6.7 Indicators
+
+| Method | Path | Description | PRD Ref |
+|--------|------|-------------|---------|
+| GET | /api/indicators?ticker=BTC&assetClass=crypto&timeframe=4h&entryPrice=97200&direction=long&stopLoss=95000&target=102000&accountType=taxable | Fetch locally-computed indicators for all timeframes + auto-suggestions for all 8 factors | FR-016 |
+
+Returns `{ configured: true, indicators: Record<timeframe, IndicatorSet>, suggestions: Record<string, { value, reason }>, multiTf: { aligned, total } }`. Always configured (no API key needed).
+
+### 6.8 Journal
 
 | Method | Path | Description | PRD Ref |
 |--------|------|-------------|---------|
@@ -359,8 +421,9 @@ This is the primary user workflow and the heart of the application.
        └── Displays S/R levels panel alongside TradingView chart
 
 3. User clicks "Continue to Checklist Scoring"
-   └── Frontend fetches: GET /api/checklist
+   └── Frontend fetches: GET /api/checklist, GET /api/indicators
        └── Renders each factor's input control based on score_type + config_json
+       └── Auto-populates all 8 automatable factors from locally-computed indicators
 
 4. User fills in factor values, clicks "View Recommendation"
    └── Frontend sends: POST /api/evaluations

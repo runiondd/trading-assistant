@@ -198,13 +198,33 @@ Acceptance Criteria:
 
 ### 6.7 TradingView Integration
 
-**FR-015: TradingView Alert Webhook Receiver**
+**FR-015: Embedded TradingView Chart**
+Description: The evaluation page embeds TradingView's Advanced Chart widget via iframe with pre-configured technical indicators (RSI, Bollinger Bands, VWAP) matching the trader's checklist factors.
+Priority: Must Have (MVP)
+Acceptance Criteria:
+- GIVEN the user is on the evaluation page WHEN they select an asset and timeframe THEN the TradingView Advanced Chart loads with the correct symbol and interval
+- GIVEN the chart is loaded THEN RSI, Bollinger Bands, and VWAP studies are displayed by default
+- GIVEN the chart is on step 1 THEN it renders at 700px height; on step 2 at 450px height to allow room for the checklist
+
+**FR-015b: TradingView Alert Webhook Receiver**
 Description: The system exposes a webhook endpoint that receives alerts from TradingView containing indicator data.
-Priority: Should Have
+Priority: Should Have (v0.2)
 Acceptance Criteria:
 - GIVEN TradingView is configured to send alerts to the system's webhook URL WHEN an alert fires for "BTC RSI crossed above 70 on 4h" THEN the system receives and stores the indicator event, associating it with the correct asset and timeframe
 - GIVEN a webhook payload with fields {ticker, indicator, value, timeframe, timestamp} WHEN received THEN the data is parsed and available for the next trade evaluation
 - GIVEN a malformed webhook payload WHEN received THEN the system logs the error and returns HTTP 400 without crashing
+
+### 6.8 Live Indicator Data (TAAPI.io)
+
+**FR-016: Live Technical Indicator Fetching**
+Description: The system fetches live RSI (14-period), Bollinger Bands (20/2), and VWAP data from TAAPI.io's REST API to auto-suggest checklist factor values during trade evaluation.
+Priority: Must Have (MVP)
+Acceptance Criteria:
+- GIVEN the TAAPI_SECRET env var is configured WHEN the user reaches the checklist scoring step THEN the system fetches live RSI, BB, and VWAP for the selected asset/timeframe and displays them in an "Indicators" panel
+- GIVEN live indicator data is available WHEN the user views a checklist factor that can be auto-populated (RSI, Mean Reversion) THEN an "Apply" button appears with a suggested value and reasoning (e.g., "RSI is 72.3 (>70) — Overbought")
+- GIVEN the user clicks "Apply" on a suggestion THEN the corresponding checklist factor is pre-filled with the suggested value
+- GIVEN TAAPI_SECRET is not configured WHEN the evaluation page loads THEN the indicator panel is hidden and no API calls are made (graceful degradation)
+- GIVEN live data is fetched THEN results are cached for 5 minutes to conserve the free-tier quota (5,000 calls/day)
 
 ## 7. Non-Functional Requirements
 
@@ -265,6 +285,7 @@ RESTful JSON API. Key endpoints:
 | POST | /api/accounts/plaid/exchange | Exchange Plaid public token for access token + store accounts |
 | POST | /api/accounts/:id/refresh | Refresh balance/holdings from Plaid |
 | GET | /api/analytics | Performance analytics |
+| GET | /api/indicators | Live RSI, BB, VWAP from TAAPI.io + auto-suggestions |
 | GET | /api/portfolio-risk | Current open risk summary |
 | POST | /api/webhooks/tradingview | TradingView alert receiver |
 
@@ -280,6 +301,8 @@ RESTful JSON API. Key endpoints:
 - Plaid integration for account balances and holdings (manual fallback)
 - Account config (two accounts, IRA flagging)
 - Trade journal — log confirm/pass and outcomes
+- TradingView embedded chart with RSI, BB, VWAP studies
+- Live indicator data from TAAPI.io with auto-suggestion of checklist factor values
 
 ### Deferred to v0.2 (after MVP is in use)
 - Analyst call logging and consensus scoring

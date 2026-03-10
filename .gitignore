@@ -10,3 +10,7 @@ build/
 coverage/
 .vscode/
 .idea/
+*.db
+*.db-journal
+*.db-wal
+.next/
