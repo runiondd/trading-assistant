@@ -45,16 +45,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const [created] = await db
-    .insert(assets)
-    .values({
-      ticker,
-      name,
-      assetClass,
-      exchange: body.exchange ?? null,
-      active: 1,
-    })
-    .returning();
+  try {
+    const [created] = await db
+      .insert(assets)
+      .values({
+        ticker,
+        name,
+        assetClass,
+        exchange: body.exchange ?? null,
+        active: 1,
+      })
+      .returning();
 
-  return NextResponse.json(created, { status: 201 });
+    return NextResponse.json(created, { status: 201 });
+  } catch (err) {
+    console.error("Asset creation error:", err);
+    return NextResponse.json(
+      { error: "Failed to create asset" },
+      { status: 500 }
+    );
+  }
 }

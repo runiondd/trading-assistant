@@ -54,92 +54,108 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Account not found" }, { status: 404 });
   }
 
-  // Fetch all checklist factors
-  const factors = await db
-    .select()
-    .from(checklistFactors)
-    .orderBy(asc(checklistFactors.sortOrder));
+  try {
+    // Fetch all checklist factors
+    const factors = await db
+      .select()
+      .from(checklistFactors)
+      .orderBy(asc(checklistFactors.sortOrder));
 
-  // Calculate R:R ratio
-  const rrRatio =
-    targets[0] != null
-      ? Math.abs(targets[0] - entryPrice) / Math.abs(entryPrice - stopLoss)
-      : 0;
+    // Calculate R:R ratio
+    const riskDistance = Math.abs(entryPrice - stopLoss);
+    if (riskDistance === 0) {
+      return NextResponse.json(
+        { error: "Entry price and stop loss cannot be the same" },
+        { status: 400 }
+      );
+    }
 
-  // Build values map keyed by factor id (number)
-  const valuesMap: Record<number, string> = {};
-  for (const [key, value] of Object.entries(factorValues)) {
-    valuesMap[Number(key)] = value as string;
-  }
+    const rrRatio =
+      targets[0] != null
+        ? Math.abs(targets[0] - entryPrice) / riskDistance
+        : 0;
 
-  // Score evaluation
-  const scoringResult = calculateScore(
-    factors as ChecklistFactor[],
-    valuesMap,
-    direction,
-    rrRatio
-  );
+    // Build values map keyed by factor id (number)
+    const valuesMap: Record<number, string> = {};
+    for (const [key, value] of Object.entries(factorValues)) {
+      valuesMap[Number(key)] = value as string;
+    }
 
-  // Calculate position size
-  const positionResult = calculatePositionSize({
-    balance: account.balance,
-    riskPct: account.defaultRiskPct,
-    entryPrice,
-    stopLoss,
-    direction,
-  });
-
-  // Check IRA eligibility
-  const iraCheck = checkIraEligibility(
-    direction,
-    "shares",
-    account.accountType
-  );
-
-  // Insert trade evaluation
-  const [evaluation] = await db
-    .insert(tradeEvaluations)
-    .values({
-      assetId,
-      accountId,
+    // Score evaluation
+    const scoringResult = calculateScore(
+      factors as ChecklistFactor[],
+      valuesMap,
       direction,
-      timeframe,
+      rrRatio
+    );
+
+    // Calculate position size
+    const positionResult = calculatePositionSize({
+      balance: account.balance,
+      riskPct: account.defaultRiskPct,
       entryPrice,
       stopLoss,
-      targetsJson: JSON.stringify(targets),
-      compositeScore: scoringResult.compositeScore,
-      signal: scoringResult.signal,
-      rrRatio,
-      positionSize: positionResult.shares,
-      positionCost: positionResult.positionCost,
-      vehicle: "shares",
-      iraEligible: iraCheck.eligible ? 1 : 0,
-      overridesJson: overrides ? JSON.stringify(overrides) : null,
-    })
-    .returning();
+      direction,
+    });
 
-  // Insert factor scores
-  const factorScoreRows = scoringResult.factorResults.map((fr) => ({
-    evaluationId: evaluation.id,
-    factorId: fr.factorId,
-    rawValue: fr.rawValue,
-    normalizedScore: fr.normalizedScore,
-    maxScore: fr.maxScore,
-  }));
+    // Check IRA eligibility
+    const iraCheck = checkIraEligibility(
+      direction,
+      "shares",
+      account.accountType
+    );
 
-  if (factorScoreRows.length > 0) {
-    await db.insert(factorScores).values(factorScoreRows);
+    // Insert trade evaluation
+    const [evaluation] = await db
+      .insert(tradeEvaluations)
+      .values({
+        assetId,
+        accountId,
+        direction,
+        timeframe,
+        entryPrice,
+        stopLoss,
+        targetsJson: JSON.stringify(targets),
+        compositeScore: scoringResult.compositeScore,
+        signal: scoringResult.signal,
+        rrRatio,
+        positionSize: positionResult.shares,
+        positionCost: positionResult.positionCost,
+        vehicle: "shares",
+        iraEligible: iraCheck.eligible ? 1 : 0,
+        overridesJson: overrides ? JSON.stringify(overrides) : null,
+      })
+      .returning();
+
+    // Insert factor scores
+    const factorScoreRows = scoringResult.factorResults.map((fr) => ({
+      evaluationId: evaluation.id,
+      factorId: fr.factorId,
+      rawValue: fr.rawValue,
+      normalizedScore: fr.normalizedScore,
+      maxScore: fr.maxScore,
+    }));
+
+    if (factorScoreRows.length > 0) {
+      await db.insert(factorScores).values(factorScoreRows);
+    }
+
+    // Fetch inserted factor scores
+    const insertedScores = await db
+      .select()
+      .from(factorScores)
+      .where(eq(factorScores.evaluationId, evaluation.id));
+
+    return NextResponse.json({
+      evaluation,
+      factorScores: insertedScores,
+      scoring: scoringResult,
+    });
+  } catch (err) {
+    console.error("Evaluation creation error:", err);
+    return NextResponse.json(
+      { error: "Failed to create evaluation" },
+      { status: 500 }
+    );
   }
-
-  // Fetch inserted factor scores
-  const insertedScores = await db
-    .select()
-    .from(factorScores)
-    .where(eq(factorScores.evaluationId, evaluation.id));
-
-  return NextResponse.json({
-    evaluation,
-    factorScores: insertedScores,
-    scoring: scoringResult,
-  });
 }

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import Card from "@/components/Card";
 import { SignalDot, type SignalLevel } from "@/components/SignalBadge";
 import Tooltip from "@/components/Tooltip";
+
+const STALE_THRESHOLD_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -15,6 +17,7 @@ interface Account {
   balance: number;
   defaultRiskPct: number;
   plaidAccountId: string | null;
+  plaidAccessToken: string | null;
   balanceUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -94,31 +97,89 @@ export default function Dashboard() {
   const [recentEvals, setRecentEvals] = useState<Evaluation[]>([]);
   const [openTrades, setOpenTrades] = useState<Evaluation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [syncingIds, setSyncingIds] = useState<Set<number>>(new Set());
+  const [staleIds, setStaleIds] = useState<Set<number>>(new Set());
+  const hasTriggeredRefresh = useRef(false);
+
+  const refreshStaleAccounts = useCallback(async (accts: Account[]) => {
+    const stale = accts.filter((a) => {
+      if (!a.plaidAccessToken) return false;
+      if (!a.balanceUpdatedAt) return true;
+      return Date.now() - new Date(a.balanceUpdatedAt).getTime() > STALE_THRESHOLD_MS;
+    });
+
+    if (stale.length === 0) return;
+
+    setSyncingIds(new Set(stale.map((a) => a.id)));
+
+    const results = await Promise.allSettled(
+      stale.map(async (a) => {
+        const res = await fetch(`/api/accounts/${a.id}/refresh`, { method: "POST" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const updated: Account = await res.json();
+        return updated;
+      })
+    );
+
+    const newStaleIds = new Set<number>();
+
+    setAccounts((prev) => {
+      const updated = [...prev];
+      for (let i = 0; i < stale.length; i++) {
+        const result = results[i];
+        const idx = updated.findIndex((a) => a.id === stale[i].id);
+        if (idx === -1) continue;
+
+        if (result.status === "fulfilled") {
+          updated[idx] = result.value;
+        } else {
+          newStaleIds.add(stale[i].id);
+        }
+      }
+      return updated;
+    });
+
+    setStaleIds(newStaleIds);
+    setSyncingIds(new Set());
+  }, []);
+
+  const fetchDashboard = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const [accountsRes, evalsRes, tradesRes] = await Promise.all([
+        fetch("/api/accounts"),
+        fetch("/api/journal?limit=5"),
+        fetch("/api/journal?status=confirmed&limit=10"),
+      ]);
+
+      let fetchedAccounts: Account[] = [];
+      if (accountsRes.ok) {
+        fetchedAccounts = await accountsRes.json();
+        setAccounts(fetchedAccounts);
+      }
+      if (evalsRes.ok) setRecentEvals(await evalsRes.json());
+      if (tradesRes.ok) {
+        const confirmed: Evaluation[] = await tradesRes.json();
+        setOpenTrades(confirmed.filter((t) => !t.outcome));
+      }
+
+      // Trigger background refresh for stale Plaid accounts (once)
+      if (!hasTriggeredRefresh.current && fetchedAccounts.length > 0) {
+        hasTriggeredRefresh.current = true;
+        refreshStaleAccounts(fetchedAccounts);
+      }
+    } catch {
+      setError("Failed to load dashboard data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshStaleAccounts]);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const [accountsRes, evalsRes, tradesRes] = await Promise.all([
-          fetch("/api/accounts"),
-          fetch("/api/journal?limit=5"),
-          fetch("/api/journal?status=confirmed&limit=10"),
-        ]);
-
-        if (accountsRes.ok) setAccounts(await accountsRes.json());
-        if (evalsRes.ok) setRecentEvals(await evalsRes.json());
-        if (tradesRes.ok) {
-          const confirmed: Evaluation[] = await tradesRes.json();
-          setOpenTrades(confirmed.filter((t) => !t.outcome));
-        }
-      } catch (err) {
-        console.error("Dashboard fetch error:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, []);
+    fetchDashboard();
+  }, [fetchDashboard]);
 
   if (loading) {
     return (
@@ -160,12 +221,32 @@ export default function Dashboard() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="max-w-6xl">
+        <Card>
+          <div className="flex flex-col items-center py-12 gap-4">
+            <p className="text-signal-red font-semibold">{error}</p>
+            <button
+              onClick={fetchDashboard}
+              className="px-4 py-2 rounded-lg bg-surface-hover hover:bg-border text-text-primary text-sm transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl space-y-6">
       {/* Account Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {accounts.map((a) => {
           const riskAmt = (a.balance * a.defaultRiskPct) / 100;
+          const isSyncing = syncingIds.has(a.id);
+          const isStale = staleIds.has(a.id);
           return (
             <Card key={a.id}>
               <div className="flex items-start justify-between">
@@ -176,8 +257,28 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="text-xs text-text-muted flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-signal-green" />
-                  {a.balanceUpdatedAt ? `Synced ${relativeTime(a.balanceUpdatedAt)}` : "Not synced"}
+                  {isSyncing ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Syncing...
+                    </>
+                  ) : isStale ? (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-signal-yellow" />
+                      <span className="text-signal-yellow">
+                        Balance may be stale
+                        {a.balanceUpdatedAt && ` \u2014 last synced ${relativeTime(a.balanceUpdatedAt)}`}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-signal-green" />
+                      {a.balanceUpdatedAt ? `Synced ${relativeTime(a.balanceUpdatedAt)}` : "Not synced"}
+                    </>
+                  )}
                   <Tooltip text="Account balance pulled from Plaid. Refreshes every 4 hours." />
                 </span>
               </div>

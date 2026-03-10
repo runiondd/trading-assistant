@@ -41,6 +41,8 @@ export default function AssetDetailPage() {
   const [asset, setAsset] = useState<AssetRow | null>(null);
   const [levels, setLevels] = useState<LevelRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [swingHigh, setSwingHigh] = useState("");
   const [swingLow, setSwingLow] = useState("");
   const [showAddLevel, setShowAddLevel] = useState(false);
@@ -51,51 +53,79 @@ export default function AssetDetailPage() {
   const fibLevels = high > low ? calcFibLevels(high, low) : [];
 
   const fetchData = useCallback(async () => {
-    const [assetRes, levelsRes] = await Promise.all([
-      fetch(`/api/assets/${assetId}`),
-      fetch(`/api/assets/${assetId}/levels`),
-    ]);
-    if (assetRes.ok) setAsset(await assetRes.json());
-    if (levelsRes.ok) setLevels(await levelsRes.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const [assetRes, levelsRes] = await Promise.all([
+        fetch(`/api/assets/${assetId}`),
+        fetch(`/api/assets/${assetId}/levels`),
+      ]);
+      if (assetRes.ok) setAsset(await assetRes.json());
+      else if (assetRes.status === 404) setError("Asset not found.");
+      else setError("Failed to load asset.");
+      if (levelsRes.ok) setLevels(await levelsRes.json());
+    } catch {
+      setError("Failed to load asset data.");
+    } finally {
+      setLoading(false);
+    }
   }, [assetId]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  const showAction = (type: "success" | "error", message: string) => {
+    setActionStatus({ type, message });
+    if (type === "success") setTimeout(() => setActionStatus(null), 3000);
+  };
+
   const addFibLevels = async () => {
     if (fibLevels.length === 0) return;
-    const res = await fetch(`/api/assets/${assetId}/levels`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        levels: fibLevels.map((f) => ({
-          price: Math.round(f.price * 100) / 100,
-          label: f.label,
-          level_type: "fibonacci",
-        })),
-      }),
-    });
-    if (res.ok) {
-      fetchData();
-      setSwingHigh("");
-      setSwingLow("");
+    try {
+      const res = await fetch(`/api/assets/${assetId}/levels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          levels: fibLevels.map((f) => ({
+            price: Math.round(f.price * 100) / 100,
+            label: f.label,
+            level_type: "fibonacci",
+          })),
+        }),
+      });
+      if (res.ok) {
+        fetchData();
+        setSwingHigh("");
+        setSwingLow("");
+        showAction("success", "Fibonacci levels added.");
+      } else {
+        showAction("error", "Failed to add Fibonacci levels.");
+      }
+    } catch {
+      showAction("error", "Failed to add Fibonacci levels.");
     }
   };
 
   const addManualLevel = async () => {
     const price = parseFloat(newLevel.price);
     if (!price || !newLevel.label) return;
-    const res = await fetch(`/api/assets/${assetId}/levels`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ price, label: newLevel.label, level_type: newLevel.levelType }),
-    });
-    if (res.ok) {
-      setNewLevel({ price: "", label: "", levelType: "manual" });
-      setShowAddLevel(false);
-      fetchData();
+    try {
+      const res = await fetch(`/api/assets/${assetId}/levels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price, label: newLevel.label, level_type: newLevel.levelType }),
+      });
+      if (res.ok) {
+        setNewLevel({ price: "", label: "", levelType: "manual" });
+        setShowAddLevel(false);
+        fetchData();
+        showAction("success", "Level added.");
+      } else {
+        const body = await res.json().catch(() => null);
+        showAction("error", body?.error ?? "Failed to add level.");
+      }
+    } catch {
+      showAction("error", "Failed to add level.");
     }
   };
 
@@ -105,30 +135,95 @@ export default function AssetDetailPage() {
   };
 
   const deleteLevel = async (levelId: number) => {
-    const res = await fetch(`/api/assets/${assetId}/levels?levelId=${levelId}`, { method: "DELETE" });
-    if (res.ok) setLevels((prev) => prev.filter((l) => l.id !== levelId));
+    try {
+      const res = await fetch(`/api/assets/${assetId}/levels?levelId=${levelId}`, { method: "DELETE" });
+      if (res.ok) {
+        setLevels((prev) => prev.filter((l) => l.id !== levelId));
+      } else {
+        showAction("error", "Failed to delete level.");
+      }
+    } catch {
+      showAction("error", "Failed to delete level.");
+    }
   };
 
   const clearFibLevels = async () => {
-    const res = await fetch(`/api/assets/${assetId}/levels?type=fibonacci`, { method: "DELETE" });
-    if (res.ok) setLevels((prev) => prev.filter((l) => l.levelType !== "fibonacci"));
+    try {
+      const res = await fetch(`/api/assets/${assetId}/levels?type=fibonacci`, { method: "DELETE" });
+      if (res.ok) {
+        setLevels((prev) => prev.filter((l) => l.levelType !== "fibonacci"));
+        showAction("success", "Fibonacci levels cleared.");
+      } else {
+        showAction("error", "Failed to clear Fibonacci levels.");
+      }
+    } catch {
+      showAction("error", "Failed to clear Fibonacci levels.");
+    }
   };
 
   const clearAllLevels = async () => {
-    const res = await fetch(`/api/assets/${assetId}/levels?type=all`, { method: "DELETE" });
-    if (res.ok) setLevels([]);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/levels?type=all`, { method: "DELETE" });
+      if (res.ok) {
+        setLevels([]);
+        showAction("success", "All levels cleared.");
+      } else {
+        showAction("error", "Failed to clear levels.");
+      }
+    } catch {
+      showAction("error", "Failed to clear levels.");
+    }
   };
 
   if (loading) {
-    return <div className="text-text-muted">Loading...</div>;
+    return (
+      <div className="max-w-4xl space-y-6">
+        <div className="animate-pulse space-y-2">
+          <div className="h-7 w-48 bg-surface-hover rounded" />
+          <div className="h-4 w-64 bg-surface-hover rounded" />
+        </div>
+        <Card className="!p-0 overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <div className="h-4 w-24 bg-surface-hover rounded animate-pulse" />
+          </div>
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="px-5 py-3 border-b border-border/50 flex gap-4 animate-pulse">
+              <div className="h-4 w-20 bg-surface-hover rounded" />
+              <div className="h-4 w-32 bg-surface-hover rounded" />
+              <div className="h-4 w-16 bg-surface-hover rounded" />
+            </div>
+          ))}
+        </Card>
+      </div>
+    );
   }
 
-  if (!asset) {
-    return <div className="text-text-muted">Asset not found.</div>;
+  if (error || !asset) {
+    return (
+      <div className="max-w-4xl">
+        <Card>
+          <div className="flex flex-col items-center py-12 gap-4">
+            <p className="text-signal-red font-semibold">{error ?? "Asset not found."}</p>
+            <button
+              onClick={fetchData}
+              className="px-4 py-2 rounded-lg bg-surface-hover hover:bg-border text-text-primary text-sm transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </Card>
+      </div>
+    );
   }
 
   return (
     <div className="max-w-4xl space-y-6">
+      {actionStatus && (
+        <p className={`text-sm ${actionStatus.type === "success" ? "text-signal-green" : "text-signal-red"}`}>
+          {actionStatus.message}
+        </p>
+      )}
+
       <div>
         <h1 className="text-xl font-bold text-text-primary">
           {asset.ticker} &mdash; {asset.name}

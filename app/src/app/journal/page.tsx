@@ -40,6 +40,7 @@ export default function JournalPage() {
   const [filter, setFilter] = useState<string>("All");
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Modal state
   const [modalEntry, setModalEntry] = useState<JournalEntry | null>(null);
@@ -47,13 +48,21 @@ export default function JournalPage() {
   const [actExit, setActExit] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [outcomeError, setOutcomeError] = useState<string | null>(null);
 
   const fetchEntries = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (filter !== "All") params.set("status", filter);
-    const res = await fetch(`/api/journal?${params}`);
-    if (res.ok) setEntries(await res.json());
-    setLoading(false);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (filter !== "All") params.set("status", filter);
+      const res = await fetch(`/api/journal?${params}`);
+      if (!res.ok) throw new Error();
+      setEntries(await res.json());
+    } catch {
+      setError("Failed to load journal entries.");
+    } finally {
+      setLoading(false);
+    }
   }, [filter]);
 
   useEffect(() => {
@@ -71,20 +80,29 @@ export default function JournalPage() {
   const handleSaveOutcome = async () => {
     if (!modalEntry || !actEntryNum || !actExitNum) return;
     setSaving(true);
-    const res = await fetch(`/api/evaluations/${modalEntry.id}/outcome`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        actualEntry: actEntryNum,
-        actualExit: actExitNum,
-        pnl: calcPnl,
-        notes: notes || null,
-      }),
-    });
-    setSaving(false);
-    if (res.ok) {
-      setModalEntry(null);
-      fetchEntries();
+    setOutcomeError(null);
+    try {
+      const res = await fetch(`/api/evaluations/${modalEntry.id}/outcome`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actualEntry: actEntryNum,
+          actualExit: actExitNum,
+          pnl: calcPnl,
+          notes: notes || null,
+        }),
+      });
+      if (res.ok) {
+        setModalEntry(null);
+        fetchEntries();
+      } else {
+        const body = await res.json().catch(() => null);
+        setOutcomeError(body?.error ?? "Failed to save outcome.");
+      }
+    } catch {
+      setOutcomeError("Failed to save outcome. Please try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -148,12 +166,31 @@ export default function JournalPage() {
           </thead>
           <tbody>
             {loading ? (
+              [1, 2, 3].map((i) => (
+                <tr key={i} className="border-b border-border/50">
+                  <td className="py-3 px-5"><div className="h-4 w-16 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-12 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-10 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-8 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-10 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-12 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-16 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-20 bg-surface-hover rounded animate-pulse" /></td>
+                </tr>
+              ))
+            ) : error ? (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-text-muted">Loading...</td>
+                <td colSpan={8} className="py-8 text-center">
+                  <p className="text-signal-red mb-2">{error}</p>
+                  <button onClick={fetchEntries} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Retry</button>
+                </td>
               </tr>
             ) : entries.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-text-muted">No trades yet.</td>
+                <td colSpan={8} className="py-12 text-center">
+                  <p className="text-text-muted mb-1">No trades yet.</p>
+                  <a href="/evaluate" className="text-sm text-primary hover:text-primary-hover transition-colors">Start your first evaluation &rarr;</a>
+                </td>
               </tr>
             ) : (
               entries.map((e) => {
@@ -308,9 +345,13 @@ export default function JournalPage() {
               />
             </div>
 
+            {outcomeError && (
+              <p className="text-sm text-signal-red">{outcomeError}</p>
+            )}
+
             <div className="flex gap-3 pt-2">
               <button
-                onClick={() => setModalEntry(null)}
+                onClick={() => { setModalEntry(null); setOutcomeError(null); }}
                 className="flex-1 py-2.5 rounded-lg bg-surface-hover hover:bg-border text-text-primary text-sm font-medium transition-colors"
               >
                 Cancel

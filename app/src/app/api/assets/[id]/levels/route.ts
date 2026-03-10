@@ -85,6 +85,16 @@ export async function POST(
   const items: { price: number; label: string; level_type: string }[] =
     Array.isArray(body.levels) ? body.levels : [body];
 
+  // Validate items
+  for (const item of items) {
+    if (item.price == null || isNaN(item.price) || item.price <= 0) {
+      return NextResponse.json({ error: "Each level must have a valid price greater than 0" }, { status: 400 });
+    }
+    if (!item.label) {
+      return NextResponse.json({ error: "Each level must have a label" }, { status: 400 });
+    }
+  }
+
   // If batch fib insert, clear existing fib levels for this asset first
   if (Array.isArray(body.levels) && items.every((i) => i.level_type === "fibonacci")) {
     await db

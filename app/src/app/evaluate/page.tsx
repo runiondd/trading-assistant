@@ -114,6 +114,8 @@ export default function EvaluatePage() {
   const [levels, setLevels] = useState<LevelRow[]>([]);
   const [factors, setFactors] = useState<FactorRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Step 1 state
   const [assetId, setAssetId] = useState<number>(0);
@@ -149,15 +151,18 @@ export default function EvaluatePage() {
   // Load initial data
   useEffect(() => {
     Promise.all([
-      fetch("/api/assets").then((r) => r.json()),
-      fetch("/api/accounts").then((r) => r.json()),
-      fetch("/api/checklist").then((r) => r.json()),
+      fetch("/api/assets").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
+      fetch("/api/accounts").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
+      fetch("/api/checklist").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
     ]).then(([assets, accounts, checklist]) => {
       setAssetList(assets);
       setAccountList(accounts);
       setFactors(checklist);
       if (assets.length > 0) setAssetId(assets[0].id);
       if (accounts.length > 0) setAccountId(accounts[0].id);
+      setLoading(false);
+    }).catch(() => {
+      setLoadError("Failed to load evaluation data. Please refresh the page.");
       setLoading(false);
     });
   }, []);
@@ -315,6 +320,7 @@ export default function EvaluatePage() {
   const handleSubmit = async () => {
     if (submitting) return;
     setSubmitting(true);
+    setSubmitError(null);
 
     // Auto-fill R:R as numeric factor value if applicable
     const rrFactorId = factors.find((f) => f.scoreType === "numeric");
@@ -369,13 +375,65 @@ export default function EvaluatePage() {
 
       router.push(`/evaluate/result?id=${data.evaluation.id}`);
     } else {
+      const body = await res.json().catch(() => null);
+      setSubmitError(body?.error ?? "Failed to create evaluation. Check your inputs.");
       setSubmitting(false);
-      alert("Failed to create evaluation. Check your inputs.");
     }
   };
 
   if (loading) {
-    return <div className="text-text-muted p-8">Loading...</div>;
+    return (
+      <div className="max-w-6xl space-y-6">
+        <div className="animate-pulse space-y-2">
+          <div className="h-7 w-48 bg-surface-hover rounded" />
+          <div className="h-4 w-32 bg-surface-hover rounded" />
+        </div>
+        <div className="h-[400px] bg-surface-hover rounded-xl animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <Card>
+              <div className="animate-pulse space-y-4">
+                <div className="h-5 w-32 bg-surface-hover rounded" />
+                <div className="grid grid-cols-2 gap-4">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="h-3 w-20 bg-surface-hover rounded" />
+                      <div className="h-9 w-full bg-surface-hover rounded" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          </div>
+          <Card>
+            <div className="animate-pulse space-y-3">
+              <div className="h-5 w-24 bg-surface-hover rounded" />
+              <div className="h-4 w-full bg-surface-hover rounded" />
+              <div className="h-4 w-full bg-surface-hover rounded" />
+              <div className="h-4 w-3/4 bg-surface-hover rounded" />
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-6xl">
+        <Card>
+          <div className="flex flex-col items-center py-12 gap-4">
+            <p className="text-signal-red font-semibold">{loadError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-lg bg-surface-hover hover:bg-border text-text-primary text-sm transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </Card>
+      </div>
+    );
   }
 
   const activeLevels = levels.filter((l) => l.active === 1);
@@ -906,6 +964,10 @@ export default function EvaluatePage() {
               </span>
             </div>
           </Card>
+
+          {submitError && (
+            <p className="text-sm text-signal-red text-center">{submitError}</p>
+          )}
 
           <button
             onClick={handleSubmit}

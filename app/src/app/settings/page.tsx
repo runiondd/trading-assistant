@@ -43,8 +43,15 @@ export default function SettingsPage() {
   const [factors, setFactors] = useState<Factor[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [showAddFactor, setShowAddFactor] = useState(false);
   const [newFactor, setNewFactor] = useState({ name: "", weight: 10, scoreType: "pass_fail" });
+
+  const showActionFeedback = (type: "success" | "error", message: string) => {
+    setActionStatus({ type, message });
+    if (type === "success") setTimeout(() => setActionStatus(null), 3000);
+  };
 
   const fetchFactors = useCallback(async () => {
     const res = await fetch("/api/checklist");
@@ -56,35 +63,68 @@ export default function SettingsPage() {
     if (res.ok) setAccounts(await res.json());
   }, []);
 
-  useEffect(() => {
-    Promise.all([fetchFactors(), fetchAccounts()]).then(() => setLoading(false));
+  const fetchAll = useCallback(async () => {
+    setError(null);
+    try {
+      await Promise.all([fetchFactors(), fetchAccounts()]);
+    } catch {
+      setError("Failed to load settings.");
+    } finally {
+      setLoading(false);
+    }
   }, [fetchFactors, fetchAccounts]);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
   const updateWeight = async (id: number, weight: number) => {
     setFactors((prev) => prev.map((f) => (f.id === id ? { ...f, weight } : f)));
-    await fetch(`/api/checklist/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ weight }),
-    });
+    try {
+      const res = await fetch(`/api/checklist/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weight }),
+      });
+      if (!res.ok) showActionFeedback("error", "Failed to update weight.");
+    } catch {
+      showActionFeedback("error", "Failed to update weight.");
+    }
   };
 
   const deleteFactor = async (id: number) => {
-    const res = await fetch(`/api/checklist/${id}`, { method: "DELETE" });
-    if (res.ok) setFactors((prev) => prev.filter((f) => f.id !== id));
+    try {
+      const res = await fetch(`/api/checklist/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setFactors((prev) => prev.filter((f) => f.id !== id));
+        showActionFeedback("success", "Factor deleted.");
+      } else {
+        showActionFeedback("error", "Failed to delete factor.");
+      }
+    } catch {
+      showActionFeedback("error", "Failed to delete factor.");
+    }
   };
 
   const addFactor = async () => {
     if (!newFactor.name) return;
-    const res = await fetch("/api/checklist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newFactor),
-    });
-    if (res.ok) {
-      setNewFactor({ name: "", weight: 10, scoreType: "pass_fail" });
-      setShowAddFactor(false);
-      fetchFactors();
+    try {
+      const res = await fetch("/api/checklist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newFactor),
+      });
+      if (res.ok) {
+        setNewFactor({ name: "", weight: 10, scoreType: "pass_fail" });
+        setShowAddFactor(false);
+        fetchFactors();
+        showActionFeedback("success", "Factor added.");
+      } else {
+        const body = await res.json().catch(() => null);
+        showActionFeedback("error", body?.error ?? "Failed to add factor.");
+      }
+    } catch {
+      showActionFeedback("error", "Failed to add factor.");
     }
   };
 
@@ -111,12 +151,46 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {tab === "accounts" && (
+      {actionStatus && (
+        <p className={`text-sm ${actionStatus.type === "success" ? "text-signal-green" : "text-signal-red"}`}>
+          {actionStatus.message}
+        </p>
+      )}
+
+      {error && (
+        <Card>
+          <div className="flex flex-col items-center py-8 gap-4">
+            <p className="text-signal-red font-semibold">{error}</p>
+            <button
+              onClick={fetchAll}
+              className="px-4 py-2 rounded-lg bg-surface-hover hover:bg-border text-text-primary text-sm transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {tab === "accounts" && !error && (
         <div className="space-y-4">
           {loading ? (
-            <p className="text-text-muted">Loading...</p>
+            [1, 2].map((i) => (
+              <Card key={i}>
+                <div className="animate-pulse space-y-3">
+                  <div className="h-5 w-32 bg-surface-hover rounded" />
+                  <div className="h-8 w-40 bg-surface-hover rounded" />
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="h-9 bg-surface-hover rounded" />
+                    <div className="h-9 bg-surface-hover rounded" />
+                    <div className="h-9 bg-surface-hover rounded" />
+                  </div>
+                </div>
+              </Card>
+            ))
           ) : accounts.length === 0 ? (
-            <p className="text-text-muted">No accounts configured.</p>
+            <Card>
+              <p className="text-text-muted text-center py-8">No accounts configured. Connect with Plaid or add one manually below.</p>
+            </Card>
           ) : (
             accounts.map((a) => (
               <Card key={a.id}>
@@ -193,10 +267,21 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {tab === "checklist" && (
+      {tab === "checklist" && !error && (
         <div className="space-y-4">
           {loading ? (
-            <p className="text-text-muted">Loading...</p>
+            <Card className="!p-0 overflow-hidden">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center gap-3 px-5 py-3 border-b border-border/50 animate-pulse">
+                  <div className="h-4 w-4 bg-surface-hover rounded" />
+                  <div className="h-4 w-4 bg-surface-hover rounded" />
+                  <div className="h-4 w-40 bg-surface-hover rounded flex-1" />
+                  <div className="h-4 w-16 bg-surface-hover rounded" />
+                  <div className="h-6 w-16 bg-surface-hover rounded" />
+                  <div className="h-4 w-4 bg-surface-hover rounded" />
+                </div>
+              ))}
+            </Card>
           ) : (
             <Card className="!p-0 overflow-hidden">
               <div className="space-y-0">

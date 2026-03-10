@@ -33,17 +33,26 @@ export default function AssetsPage() {
   const [search, setSearch] = useState("");
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [newAsset, setNewAsset] = useState({ ticker: "", name: "", assetClass: "equity", exchange: "" });
 
   const fetchAssets = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (filter !== "All") params.set("class", filter);
-    if (search) params.set("search", search);
-    const res = await fetch(`/api/assets?${params}`);
-    const data = await res.json();
-    setAssets(data);
-    setLoading(false);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (filter !== "All") params.set("class", filter);
+      if (search) params.set("search", search);
+      const res = await fetch(`/api/assets?${params}`);
+      if (!res.ok) throw new Error("Failed to load assets");
+      const data = await res.json();
+      setAssets(data);
+    } catch {
+      setError("Failed to load assets.");
+    } finally {
+      setLoading(false);
+    }
   }, [filter, search]);
 
   useEffect(() => {
@@ -52,20 +61,30 @@ export default function AssetsPage() {
 
   const handleAdd = async () => {
     if (!newAsset.ticker || !newAsset.name) return;
-    const res = await fetch("/api/assets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ticker: newAsset.ticker.toUpperCase(),
-        name: newAsset.name,
-        assetClass: newAsset.assetClass,
-        exchange: newAsset.exchange || null,
-      }),
-    });
-    if (res.ok) {
-      setNewAsset({ ticker: "", name: "", assetClass: "equity", exchange: "" });
-      setShowAdd(false);
-      fetchAssets();
+    setAddStatus(null);
+    try {
+      const res = await fetch("/api/assets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticker: newAsset.ticker.toUpperCase(),
+          name: newAsset.name,
+          assetClass: newAsset.assetClass,
+          exchange: newAsset.exchange || null,
+        }),
+      });
+      if (res.ok) {
+        setNewAsset({ ticker: "", name: "", assetClass: "equity", exchange: "" });
+        setShowAdd(false);
+        setAddStatus({ type: "success", message: `${newAsset.ticker.toUpperCase()} added successfully.` });
+        fetchAssets();
+        setTimeout(() => setAddStatus(null), 3000);
+      } else {
+        const body = await res.json().catch(() => null);
+        setAddStatus({ type: "error", message: body?.error ?? "Failed to add asset." });
+      }
+    } catch {
+      setAddStatus({ type: "error", message: "Failed to add asset. Please try again." });
     }
   };
 
@@ -80,6 +99,12 @@ export default function AssetsPage() {
           + Add Asset
         </button>
       </div>
+
+      {addStatus && (
+        <p className={`text-sm ${addStatus.type === "success" ? "text-signal-green" : "text-signal-red"}`}>
+          {addStatus.message}
+        </p>
+      )}
 
       {showAdd && (
         <Card>
@@ -160,12 +185,27 @@ export default function AssetsPage() {
           </thead>
           <tbody>
             {loading ? (
+              [1, 2, 3, 4].map((i) => (
+                <tr key={i} className="border-b border-border/50">
+                  <td className="py-3 px-5"><div className="h-4 w-16 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-32 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-16 bg-surface-hover rounded animate-pulse" /></td>
+                  <td className="py-3 px-5"><div className="h-4 w-20 bg-surface-hover rounded animate-pulse" /></td>
+                </tr>
+              ))
+            ) : error ? (
               <tr>
-                <td colSpan={4} className="py-8 text-center text-text-muted">Loading...</td>
+                <td colSpan={4} className="py-8 text-center">
+                  <p className="text-signal-red mb-2">{error}</p>
+                  <button onClick={fetchAssets} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Retry</button>
+                </td>
               </tr>
             ) : assets.length === 0 ? (
               <tr>
-                <td colSpan={4} className="py-8 text-center text-text-muted">No assets found.</td>
+                <td colSpan={4} className="py-12 text-center">
+                  <p className="text-text-muted mb-1">No assets found.</p>
+                  <button onClick={() => setShowAdd(true)} className="text-sm text-primary hover:text-primary-hover transition-colors">Add your first asset &rarr;</button>
+                </td>
               </tr>
             ) : (
               assets.map((a) => (
