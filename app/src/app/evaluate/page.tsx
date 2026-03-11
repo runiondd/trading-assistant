@@ -148,6 +148,17 @@ export default function EvaluatePage() {
   >({});
   const [indicatorsLoading, setIndicatorsLoading] = useState(false);
 
+  // Stop loss suggestions from confluence engine
+  const [stopSuggestions, setStopSuggestions] = useState<
+    {
+      price: number;
+      confidence: number;
+      sources: { source: string; label: string }[];
+      riskPct: number;
+      rrRatio: number | null;
+    }[]
+  >([]);
+
   // Load initial data
   useEffect(() => {
     Promise.all([
@@ -233,6 +244,7 @@ export default function EvaluatePage() {
           setIndicators(data.indicators);
           const sugg = data.suggestions ?? {};
           setSuggestions(sugg);
+          setStopSuggestions(data.stopSuggestions ?? []);
 
           // Auto-apply all suggestions to factor values (won't overwrite user choices)
           const autoApplied: Record<string, string> = {};
@@ -601,6 +613,67 @@ export default function EvaluatePage() {
                       className="w-full bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
                       placeholder="0.00"
                     />
+                    {/* Smart Stop Suggestions */}
+                    {stopSuggestions.length > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        <p className="text-[10px] text-text-muted uppercase tracking-wider">
+                          Suggested stops (by confluence)
+                        </p>
+                        {stopSuggestions.map((s, i) => {
+                          const isSelected = stop === String(parseFloat(s.price.toFixed(2)));
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setStop(String(parseFloat(s.price.toFixed(2))))}
+                              className={`w-full text-left px-2.5 py-2 rounded-lg border text-xs transition-colors ${
+                                isSelected
+                                  ? "border-primary bg-primary/10"
+                                  : "border-border bg-surface-hover hover:border-text-muted"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-mono font-semibold text-text-primary">
+                                  ${parseFloat(s.price.toFixed(2)).toLocaleString()}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                  <span className={`text-[10px] font-medium ${
+                                    s.confidence >= 60 ? "text-signal-green"
+                                      : s.confidence >= 35 ? "text-signal-yellow"
+                                      : "text-signal-red"
+                                  }`}>
+                                    {s.confidence >= 60 ? "High" : s.confidence >= 35 ? "Med" : "Low"}
+                                  </span>
+                                  <span className="w-12 h-1.5 rounded-full bg-surface-hover overflow-hidden">
+                                    <span
+                                      className={`block h-full rounded-full ${
+                                        s.confidence >= 60 ? "bg-signal-green"
+                                          : s.confidence >= 35 ? "bg-signal-yellow"
+                                          : "bg-signal-red"
+                                      }`}
+                                      style={{ width: `${Math.min(100, s.confidence)}%` }}
+                                    />
+                                  </span>
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-text-secondary">
+                                <span className="truncate mr-2">
+                                  {s.sources.map((src) => src.label).join(" + ")}
+                                </span>
+                                <span className="flex-shrink-0 font-mono text-text-muted">
+                                  {s.riskPct.toFixed(1)}% risk
+                                  {s.rrRatio != null && s.rrRatio > 0 && (
+                                    <span className={s.rrRatio >= 2 ? "text-signal-green" : "text-signal-yellow"}>
+                                      {" "}({parseFloat(s.rrRatio.toFixed(1))}:1)
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Target */}

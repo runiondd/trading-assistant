@@ -323,7 +323,7 @@ function ResultContent() {
               <span className="text-text-secondary">R:R</span>
               <span className="font-mono font-semibold text-text-primary">
                 {evaluation.rrRatio != null
-                  ? `${evaluation.rrRatio}:1`
+                  ? `${parseFloat(evaluation.rrRatio.toFixed(2))}:1`
                   : "N/A"}
               </span>
             </div>

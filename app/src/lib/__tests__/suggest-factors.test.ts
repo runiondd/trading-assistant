@@ -16,6 +16,7 @@ function makeIndicators(overrides: Partial<IndicatorSet> = {}): IndicatorSet {
     ema50: null,
     bb: null,
     kc: null,
+    atr: null,
     volumeAvg20: null,
     lastVolume: null,
     lastClose: null,

@@ -28,7 +28,7 @@ export default function FactorBar({
         />
       </div>
       <span className="text-xs font-mono text-text-muted w-12 text-right">
-        {score}/{max}
+        {parseFloat(score.toFixed(2))}/{max}
       </span>
     </div>
   );

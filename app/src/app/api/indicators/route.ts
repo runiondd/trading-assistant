@@ -3,12 +3,14 @@ import { fetchCandles } from "@/lib/price-data";
 import {
   calcRSI,
   calcEMA,
+  calcATR,
   calcBollingerBands,
   calcKeltnerChannels,
   calcSMA,
   isSqueeze,
   type Candle,
 } from "@/lib/indicators";
+import { suggestStopLoss, type StopSuggestion } from "@/lib/suggest-stop";
 import {
   suggestAllFactors,
   type IndicatorSet,
@@ -28,6 +30,7 @@ function buildIndicatorSet(candles: Candle[]): IndicatorSet {
       ema50: null,
       bb: null,
       kc: null,
+      atr: null,
       volumeAvg20: null,
       lastVolume: null,
       lastClose: null,
@@ -50,6 +53,7 @@ function buildIndicatorSet(candles: Candle[]): IndicatorSet {
     ema50: ema50Arr.length > 0 ? ema50Arr[ema50Arr.length - 1] : null,
     bb,
     kc,
+    atr: calcATR(candles),
     volumeAvg20: calcSMA(volumes, 20),
     lastVolume: candles[candles.length - 1].volume,
     lastClose: candles[candles.length - 1].close,
@@ -93,7 +97,7 @@ export async function GET(request: NextRequest) {
   const indicators = multiTf[timeframe] ?? buildIndicatorSet([]);
 
   // Fetch S/R levels for this asset
-  let assetLevels: { price: number; label: string }[] = [];
+  let assetLevels: { price: number; label: string; levelType: string }[] = [];
 
   const [asset] = await db
     .select()
@@ -102,7 +106,7 @@ export async function GET(request: NextRequest) {
 
   if (asset) {
     const rows = await db
-      .select({ price: levels.price, label: levels.label })
+      .select({ price: levels.price, label: levels.label, levelType: levels.levelType })
       .from(levels)
       .where(and(eq(levels.assetId, asset.id), eq(levels.active, 1)));
 
@@ -129,10 +133,26 @@ export async function GET(request: NextRequest) {
 
   const suggestions = suggestAllFactors(ctx);
 
+  // Compute smart stop loss suggestions
+  const stopSuggestions: StopSuggestion[] = entryPrice > 0
+    ? suggestStopLoss({
+        entryPrice,
+        targetPrice: target || null,
+        direction,
+        levels: assetLevels,
+        atr: indicators.atr,
+        ema20: indicators.ema20,
+        ema50: indicators.ema50,
+        bb: indicators.bb,
+        kc: indicators.kc,
+      })
+    : [];
+
   return NextResponse.json({
     configured: true,
     indicators,
     suggestions,
+    stopSuggestions,
     multiTf,
   });
 }

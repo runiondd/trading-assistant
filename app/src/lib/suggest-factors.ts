@@ -9,6 +9,7 @@ export interface IndicatorSet {
   ema50: number | null;
   bb: { upper: number; middle: number; lower: number } | null;
   kc: { upper: number; middle: number; lower: number } | null;
+  atr: number | null;
   volumeAvg20: number | null;
   lastVolume: number | null;
   lastClose: number | null;
