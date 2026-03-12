@@ -6,6 +6,7 @@ import Link from "next/link";
 import Card from "@/components/Card";
 import Tooltip from "@/components/Tooltip";
 import TradingViewChart from "@/components/TradingViewChart";
+import ScoutPanel from "@/components/ScoutPanel";
 
 interface AssetRow {
   id: number;
@@ -831,6 +832,18 @@ export default function EvaluatePage() {
                 <p className="mt-4 text-[11px] text-text-muted leading-relaxed">
                   Levels are defined per asset on the Assets page.
                 </p>
+              </Card>
+
+              {/* Scout AI Panel */}
+              <Card className="!p-0 overflow-hidden mt-4 h-[480px]">
+                <ScoutPanel
+                  ticker={ticker || null}
+                  timeframe={timeframe}
+                  direction={direction}
+                  entryPrice={entryNum || undefined}
+                  stopLoss={stopNum || undefined}
+                  target={targetNum || undefined}
+                />
               </Card>
             </div>
           </div>

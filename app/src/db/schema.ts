@@ -127,6 +127,14 @@ export const tradeOutcomes = sqliteTable("trade_outcomes", {
   createdAt: timestamp(),
 });
 
+// ── api_keys ────────────────────────────────────────────────────────
+export const apiKeys = sqliteTable("api_keys", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(), // "anthropic" | "unusual_whales"
+  value: text("value").notNull(),
+  createdAt: timestamp(),
+});
+
 // ── saved_factor_values ─────────────────────────────────────────────
 export const savedFactorValues = sqliteTable(
   "saved_factor_values",
