@@ -6,7 +6,9 @@ import Link from "next/link";
 import Card from "@/components/Card";
 import Tooltip from "@/components/Tooltip";
 import TradingViewChart from "@/components/TradingViewChart";
+import PriceContextMap, { classifySignals, type Signal } from "@/components/PriceContextMap";
 import ScoutPanel from "@/components/ScoutPanel";
+import Explain from "@/components/Explain";
 
 interface AssetRow {
   id: number;
@@ -139,6 +141,7 @@ export default function EvaluatePage() {
     ema50: number | null;
     bb: { upper: number; middle: number; lower: number } | null;
     kc: { upper: number; middle: number; lower: number } | null;
+    atr: number | null;
     volumeAvg20: number | null;
     lastVolume: number | null;
     lastClose: number | null;
@@ -495,10 +498,66 @@ export default function EvaluatePage() {
 
       {step === 1 && (
         <>
-          <TradingViewChart symbol={ticker} interval={timeframe} height={700} />
+          <PriceContextMap
+            ticker={ticker}
+            lastClose={indicators?.lastClose ?? null}
+            entry={entryNum || null}
+            stop={stopNum || null}
+            target={targetNum || null}
+            direction={direction}
+            levels={activeLevels}
+            indicators={indicators}
+            stopSuggestions={stopSuggestions}
+            height={700}
+          />
+
+          {/* Signal strip with Explain buttons */}
+          {indicators && (() => {
+            const currentPrice = indicators.lastClose;
+            const sigs = classifySignals(indicators, currentPrice, activeLevels, direction, entryNum || null, stopNum || null, targetNum || null);
+            const bears = sigs.filter((s) => s.side === "bear");
+            const bulls = sigs.filter((s) => s.side === "bull");
+            if (sigs.length === 0) return null;
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  {bears.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-signal-red/5 border border-signal-red/15">
+                      <span className="text-xs font-semibold text-signal-red flex-1">{s.label}</span>
+                      <span className="text-[10px] text-text-muted">{s.detail}</span>
+                      <Explain context={`${s.label}: ${s.detail}`} ticker={ticker} tradeContext={`${direction} ${timeframe}, entry $${entry}, stop $${stop}, target $${target}`} />
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-1.5">
+                  {bulls.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-signal-green/5 border border-signal-green/15">
+                      <span className="text-xs font-semibold text-signal-green flex-1">{s.label}</span>
+                      <span className="text-[10px] text-text-muted">{s.detail}</span>
+                      <Explain context={`${s.label}: ${s.detail}`} ticker={ticker} tradeContext={`${direction} ${timeframe}, entry $${entry}, stop $${stop}, target $${target}`} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
+            {/* Scout AI Panel — top of right column on desktop, shown first on mobile */}
+            <div className="lg:col-span-1 lg:row-span-2 lg:order-2">
+              <Card className="!p-0 overflow-hidden h-[600px] sticky top-4">
+                <ScoutPanel
+                  ticker={ticker || null}
+                  timeframe={timeframe}
+                  direction={direction}
+                  entryPrice={entryNum || undefined}
+                  stopLoss={stopNum || undefined}
+                  target={targetNum || undefined}
+                />
+              </Card>
+            </div>
+
+            <div className="lg:col-span-2 lg:order-1">
               <Card>
                 <h2 className="text-base font-semibold text-text-primary mb-4">Trade Setup</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -726,7 +785,7 @@ export default function EvaluatePage() {
             </div>
 
             {/* S/R Levels Panel */}
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-2 lg:order-3">
               <Card className="h-full">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-base font-semibold text-text-primary">
@@ -834,26 +893,17 @@ export default function EvaluatePage() {
                 </p>
               </Card>
 
-              {/* Scout AI Panel */}
-              <Card className="!p-0 overflow-hidden mt-4 h-[480px]">
-                <ScoutPanel
-                  ticker={ticker || null}
-                  timeframe={timeframe}
-                  direction={direction}
-                  entryPrice={entryNum || undefined}
-                  stopLoss={stopNum || undefined}
-                  target={targetNum || undefined}
-                />
-              </Card>
             </div>
           </div>
 
-          <button
-            onClick={() => setStep(2)}
-            className="w-full py-3 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold transition-colors"
-          >
-            Continue to Checklist Scoring &rarr;
-          </button>
+          <div className="lg:w-2/3">
+            <button
+              onClick={() => setStep(2)}
+              className="w-full py-3 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold transition-colors"
+            >
+              Continue to Checklist Scoring &rarr;
+            </button>
+          </div>
         </>
       )}
 
@@ -881,7 +931,10 @@ export default function EvaluatePage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {indicators.rsi !== null && (
                   <div className="bg-surface-hover/50 rounded-lg px-3 py-2">
-                    <div className="text-xs text-text-muted uppercase tracking-wider">RSI (14)</div>
+                    <div className="text-xs text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                      RSI (14)
+                      <Explain context={`RSI(14) is at ${indicators.rsi.toFixed(1)}`} ticker={ticker} tradeContext={`${direction} ${timeframe}, entry $${entry}`} />
+                    </div>
                     <div className={`text-lg font-bold font-mono ${
                       indicators.rsi >= 70 ? "text-signal-red" : indicators.rsi <= 30 ? "text-signal-green" : "text-text-primary"
                     }`}>
@@ -891,7 +944,10 @@ export default function EvaluatePage() {
                 )}
                 {indicators.bb !== null && (
                   <div className="bg-surface-hover/50 rounded-lg px-3 py-2">
-                    <div className="text-xs text-text-muted uppercase tracking-wider">Bollinger Bands</div>
+                    <div className="text-xs text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                      Bollinger Bands
+                      <Explain context={`Bollinger Bands: Upper $${indicators.bb.upper.toFixed(2)}, Mid $${indicators.bb.middle.toFixed(2)}, Lower $${indicators.bb.lower.toFixed(2)}. Current price $${indicators.lastClose?.toFixed(2) ?? "unknown"}`} ticker={ticker} tradeContext={`${direction} ${timeframe}, entry $${entry}`} />
+                    </div>
                     <div className="text-xs font-mono text-text-secondary space-y-0.5 mt-1">
                       <div>Upper: <span className="text-signal-red">${indicators.bb.upper.toLocaleString(undefined, {maximumFractionDigits: 2})}</span></div>
                       <div>Mid: <span className="text-text-primary">${indicators.bb.middle.toLocaleString(undefined, {maximumFractionDigits: 2})}</span></div>
@@ -901,7 +957,10 @@ export default function EvaluatePage() {
                 )}
                 {(indicators.ema20 !== null || indicators.ema50 !== null) && (
                   <div className="bg-surface-hover/50 rounded-lg px-3 py-2">
-                    <div className="text-xs text-text-muted uppercase tracking-wider">EMAs</div>
+                    <div className="text-xs text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                      EMAs
+                      <Explain context={`EMA(20) at $${indicators.ema20?.toFixed(2) ?? "N/A"}, EMA(50) at $${indicators.ema50?.toFixed(2) ?? "N/A"}. Current price $${indicators.lastClose?.toFixed(2) ?? "unknown"}. ${indicators.ema20 && indicators.ema50 ? (indicators.ema20 > indicators.ema50 ? "EMA20 is above EMA50 (golden cross alignment)" : "EMA20 is below EMA50 (death cross alignment)") : ""}`} ticker={ticker} tradeContext={`${direction} ${timeframe}, entry $${entry}`} />
+                    </div>
                     <div className="text-xs font-mono text-text-secondary space-y-0.5 mt-1">
                       {indicators.ema20 !== null && (
                         <div>EMA(20): <span className="text-text-primary">${indicators.ema20.toLocaleString(undefined, {maximumFractionDigits: 2})}</span></div>
@@ -914,7 +973,10 @@ export default function EvaluatePage() {
                 )}
                 {indicators.kc !== null && (
                   <div className="bg-surface-hover/50 rounded-lg px-3 py-2">
-                    <div className="text-xs text-text-muted uppercase tracking-wider">Keltner Channels</div>
+                    <div className="text-xs text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                      Keltner Channels
+                      <Explain context={`Keltner Channels: Upper $${indicators.kc.upper.toFixed(2)}, Mid $${indicators.kc.middle.toFixed(2)}, Lower $${indicators.kc.lower.toFixed(2)}. ${indicators.squeeze ? "SQUEEZE IS ACTIVE — Bollinger Bands are inside Keltner Channels" : "No squeeze"}`} ticker={ticker} tradeContext={`${direction} ${timeframe}, entry $${entry}`} />
+                    </div>
                     <div className="text-xs font-mono text-text-secondary space-y-0.5 mt-1">
                       <div>Upper: <span className="text-signal-red">${indicators.kc.upper.toLocaleString(undefined, {maximumFractionDigits: 2})}</span></div>
                       <div>Mid: <span className="text-text-primary">${indicators.kc.middle.toLocaleString(undefined, {maximumFractionDigits: 2})}</span></div>
@@ -924,7 +986,10 @@ export default function EvaluatePage() {
                 )}
                 {indicators.lastVolume !== null && indicators.volumeAvg20 !== null && indicators.volumeAvg20 > 0 && (
                   <div className="bg-surface-hover/50 rounded-lg px-3 py-2">
-                    <div className="text-xs text-text-muted uppercase tracking-wider">Volume Ratio</div>
+                    <div className="text-xs text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                      Volume Ratio
+                      <Explain context={`Volume ratio is ${(indicators.lastVolume / indicators.volumeAvg20).toFixed(2)}x the 20-day average. Today's volume: ${indicators.lastVolume.toLocaleString()}, average: ${indicators.volumeAvg20.toLocaleString()}`} ticker={ticker} tradeContext={`${direction} ${timeframe}, entry $${entry}`} />
+                    </div>
                     <div className={`text-lg font-bold font-mono ${
                       indicators.lastVolume / indicators.volumeAvg20 >= 1.2 ? "text-signal-green" : "text-text-primary"
                     }`}>
@@ -933,7 +998,10 @@ export default function EvaluatePage() {
                   </div>
                 )}
                 <div className="bg-surface-hover/50 rounded-lg px-3 py-2">
-                  <div className="text-xs text-text-muted uppercase tracking-wider">Squeeze</div>
+                  <div className="text-xs text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                    Squeeze
+                    <Explain context={`Bollinger Band Squeeze is ${indicators.squeeze ? "ACTIVE — Bollinger Bands have contracted inside the Keltner Channels, indicating low volatility that typically precedes a large price move" : "not active — normal volatility"}`} ticker={ticker} tradeContext={`${direction} ${timeframe}, entry $${entry}`} />
+                  </div>
                   <div className="mt-1">
                     <span className={`text-xs px-2 py-1 rounded font-medium ${
                       indicators.squeeze
