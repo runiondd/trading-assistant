@@ -587,7 +587,7 @@ export default function EvaluatePage() {
                       {(["long", "short"] as const).map((d) => (
                         <button
                           key={d}
-                          onClick={() => setDirection(d)}
+                          onClick={() => { setDirection(d); setStop(""); }}
                           className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors uppercase ${
                             direction === d
                               ? d === "long"
