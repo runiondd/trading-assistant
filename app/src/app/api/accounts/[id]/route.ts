@@ -34,6 +34,9 @@ export async function PUT(
   if (body.balance !== undefined) updates.balance = body.balance;
   if (body.defaultRiskPct !== undefined)
     updates.defaultRiskPct = body.defaultRiskPct;
+  if ("plaidAccountId" in body) updates.plaidAccountId = body.plaidAccountId;
+  if ("plaidAccessToken" in body) updates.plaidAccessToken = body.plaidAccessToken;
+  if ("balanceUpdatedAt" in body) updates.balanceUpdatedAt = body.balanceUpdatedAt;
 
   updates.updatedAt = new Date().toISOString();
 
