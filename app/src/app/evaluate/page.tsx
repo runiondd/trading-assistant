@@ -9,6 +9,7 @@ import TradingViewChart from "@/components/TradingViewChart";
 import PriceContextMap, { classifySignals, type Signal } from "@/components/PriceContextMap";
 import ScoutPanel from "@/components/ScoutPanel";
 import Explain from "@/components/Explain";
+import OptionsOptimizer from "@/components/OptionsOptimizer";
 
 interface AssetRow {
   id: number;
@@ -128,6 +129,7 @@ export default function EvaluatePage() {
   const [entry, setEntry] = useState("");
   const [stop, setStop] = useState("");
   const [target, setTarget] = useState("");
+  const [showOptions, setShowOptions] = useState(false);
 
   // Step 2 state — dynamic factor values keyed by factor ID
   const [factorValues, setFactorValues] = useState<Record<string, string>>({});
@@ -894,6 +896,43 @@ export default function EvaluatePage() {
               </Card>
 
             </div>
+          </div>
+
+          {/* Options Optimizer Panel */}
+          <div className="lg:w-2/3">
+            <button
+              onClick={() => setShowOptions(!showOptions)}
+              className={`w-full py-2.5 rounded-xl text-sm font-medium transition-colors border ${
+                showOptions
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-surface hover:border-text-muted text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              {showOptions ? "Hide Options" : "Show Options"}
+            </button>
+
+            {showOptions && entryNum > 0 && stopNum > 0 && targetNum > 0 && (
+              <div className="mt-3">
+                <OptionsOptimizer
+                  ticker={ticker}
+                  direction={direction}
+                  entry={entryNum}
+                  stop={stopNum}
+                  target={targetNum}
+                  timeframe={timeframe}
+                  riskAmount={riskAmt}
+                  atr={indicators?.atr ?? null}
+                />
+              </div>
+            )}
+
+            {showOptions && (entryNum <= 0 || stopNum <= 0 || targetNum <= 0) && (
+              <div className="mt-3 rounded-xl border border-border bg-surface p-4">
+                <p className="text-xs text-text-muted">
+                  Set entry, stop, and target prices above to see options recommendations.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="lg:w-2/3">

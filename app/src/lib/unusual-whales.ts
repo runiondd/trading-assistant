@@ -41,13 +41,19 @@ const cache = new Map<string, { data: OptionsAnalysis; fetchedAt: number }>();
 // Option symbol parsing (OCC format: TICKER YYMMDD C/P STRIKE)
 // ---------------------------------------------------------------------------
 
-function parseOptionSymbol(symbol: string): { strike: number; type: "call" | "put" } | null {
+function parseOptionSymbol(symbol: string): { strike: number; type: "call" | "put"; expiration: string } | null {
   // OCC format: e.g., "AAPL  250321C00175000" or simplified "AAPL250321C00175000"
-  const match = symbol.match(/([CP])(\d{8})$/);
+  const match = symbol.match(/(\d{6})([CP])(\d{8})$/);
   if (!match) return null;
+  // Parse YYMMDD → YYYY-MM-DD
+  const yy = match[1].slice(0, 2);
+  const mm = match[1].slice(2, 4);
+  const dd = match[1].slice(4, 6);
+  const expiration = `20${yy}-${mm}-${dd}`;
   return {
-    type: match[1] === "C" ? "call" : "put",
-    strike: parseInt(match[2], 10) / 1000,
+    type: match[2] === "C" ? "call" : "put",
+    strike: parseInt(match[3], 10) / 1000,
+    expiration,
   };
 }
 
@@ -160,12 +166,12 @@ export async function getOptionContracts(
         underlying: ticker,
         strike: parsed?.strike ?? Number(r.strike ?? r.strike_price ?? 0),
         type: parsed?.type ?? (String(r.option_type ?? r.type ?? "call").toLowerCase().startsWith("p") ? "put" : "call"),
-        expiration: String(r.expiration ?? r.expires_at ?? ""),
+        expiration: parsed?.expiration ?? String(r.expiration ?? r.expires_at ?? ""),
         volume: Number(r.volume ?? 0),
         openInterest: Number(r.open_interest ?? r.oi ?? 0),
         impliedVolatility: Number(r.implied_volatility ?? r.iv ?? 0),
-        bid: Number(r.bid ?? 0),
-        ask: Number(r.ask ?? 0),
+        bid: Number(r.nbbo_bid ?? r.bid ?? 0),
+        ask: Number(r.nbbo_ask ?? r.ask ?? 0),
         lastPrice: Number(r.last_price ?? r.midpoint ?? 0),
       });
     }
